@@ -133,7 +133,7 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\..\..\..\Library\examples\CGAL-5.2.1\examples\Apollonius_graph_2\ag2_exact_traits.cpp" />
+    <ClCompile Include="ag2_exact_traits.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
