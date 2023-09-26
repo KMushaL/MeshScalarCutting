@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.props" Condition="Exists('..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.props')" />
+  <Import Project="packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props" Condition="Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -22,8 +22,8 @@
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
-    <ProjectGuid>{ef24deae-6624-470c-9eab-e76fedd55bc2}</ProjectGuid>
-    <RootNamespace>exp1</RootNamespace>
+    <ProjectGuid>{bbded0c3-3bca-460a-a865-a84e40e64fd9}</ProjectGuid>
+    <RootNamespace>demo1</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
@@ -102,10 +102,11 @@
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
-      <SDLCheck>true</SDLCheck>
+      <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\wxd\source\repos\exp1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\temp\demo1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>None</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -117,10 +118,11 @@
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
+      <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\wxd\source\repos\exp1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <DebugInformationFormat>OldStyle</DebugInformationFormat>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -130,20 +132,21 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <None Include="packages.config" />
+    <ClCompile Include="ag2_exact_traits.h" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="ag2_exact_traits.cpp" />
+    <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.targets" Condition="Exists('..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.targets')" />
+    <Import Project="packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets" Condition="Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets')" />
   </ImportGroup>
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
     <PropertyGroup>
       <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用“NuGet 程序包还原”可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
     </PropertyGroup>
-    <Error Condition="!Exists('..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.props'))" />
-    <Error Condition="!Exists('..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\vcpkg.C.Library.vcpackage.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpackage.vcpkg.targets'))" />
+    <Error Condition="!Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props'))" />
+    <Error Condition="!Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets'))" />
   </Target>
 </Project>

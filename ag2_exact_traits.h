@@ -1,7 +1,9 @@
+#pragma once
 #include <iostream>
 #include <fstream>
 #include <cassert>
 #include <map>
+#include <igl/read_triangle_mesh.h>
 
 
 // the number type
@@ -135,102 +137,3 @@ struct BoundaryApolloniusGraph
 	}
 };
 
-int main()
-{
-	std::vector<Point_2> tri;
-	tri.emplace_back(Point_2(0, 0));
-	tri.emplace_back(Point_2(0, 5));
-	tri.emplace_back(Point_2(5, 0));
-	Polygon_2 tri_boundary(tri.begin(), tri.end());
-
-	/*std::ifstream ifs("data/sites.cin");
-	assert(ifs);*/
-
-	const std::string tri_out_file = "C:\\Users\\wxd\\source\\repos\\exp1\\exp1\\data\\sites.obj";
-	std::ofstream tri_out(tri_out_file);
-
-	for (const auto& triPoint : tri)
-	{
-		tri_out << "v " << triPoint.x() << " " << triPoint.y() << " 0\n";
-	}
-	tri_out << "f 1 2 3\n";
-
-	Apollonius_graph ag;
-	std::vector<Point_2> sites = tri;
-	sites.emplace_back(Point_2(0, 2.5));
-	sites.emplace_back(Point_2(2.5, 0));
-	sites.emplace_back(Point_2(2.5, 2.5));
-	for (int i = 0; i < sites.size(); ++i)
-	{
-		const auto sitePoint = sites[i];
-		tri_out << "v " << sitePoint.x() << " " << sitePoint.y() << " 0\n";
-		Apollonius_graph::Site_2 site(sitePoint, 0);
-		ag.insert(site);
-	}
-	tri_out.close();
-
-	// read the sites and insert them in the Apollonius graph
-	/*while (ifs >> site) {
-		ag.insert(site);
-	}*/
-
-	//construct a rectangle
-	// This is set up to be well outside the range of the sites
-	// This means that we should be able to just join up the end
-	// points for any open cells, without fear of crossing the 
-	// area that contains the sites (EXCEPT for pretty pathological
-	// cases, e.g., where there are only two sites)
-	Iso_rectangle_2 bbox(-2000, -2000, 2000, 2000);
-	Cropped_voronoi_from_apollonius vor(bbox);
-
-	const std::string out_file = "C:\\Users\\wxd\\source\\repos\\exp1\\exp1\\data\\out_vor.obj";
-	std::ofstream out(out_file);
-	int edgeIdx = 1;
-
-	// iterate to extract Voronoi diagram edges around each vertex
-	/*Apollonius_graph::Finite_vertices_iterator vit;*/
-	BoundaryApolloniusGraph bag(tri_boundary);
-	for (auto vit = ag.finite_vertices_begin(); vit != ag.finite_vertices_end(); ++vit) {
-		std::cout << "Vertex " << vit->site().point() << std::endl;
-		Apollonius_graph::Edge_circulator ec = ag.incident_edges(vit), done(ec);
-		if (ec != 0) {
-			do {
-				ag.draw_dual_edge(*ec, vor);
-				//std::cout << "Edge\n";
-			} while (++ec != done);
-		}
-		//print the cropped Voronoi diagram edges as segments
-		/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
-			std::ostream_iterator<Segment_2>(std::cout, "\n"));
-		std::cout << "=========\n";*/
-		for (const auto& vor_seg : vor.m_cropped_vd)
-		{
-			//ag_dual_segs.emplace_back(vor_seg);
-			out << "v " << vor_seg.vertex(0) << " 0\nv " << vor_seg.vertex(1) << " 0" << std::endl;
-			//std::cout << "v1: " << vor_seg.vertex(0) << " 0 v2: " << vor_seg.vertex(1) << " 0" << std::endl;
-			out << "l " << edgeIdx << " " << edgeIdx + 1 << std::endl;
-			edgeIdx += 2;
-			bag << vor_seg;
-		}
-		vor.reset();
-	}
-	out.close();
-
-	const std::string clip_out_file = "C:\\Users\\wxd\\source\\repos\\exp1\\exp1\\data\\clip_out_vor.obj";
-	std::ofstream clip_out(clip_out_file);
-	edgeIdx = 1;
-	for (const auto& clip_seg : bag.clipSegments)
-	{
-		clip_out << "v " << clip_seg.vertex(0) << " 0\nv " << clip_seg.vertex(1) << " 0" << std::endl;
-		//std::cout << "v1: " << clip_seg.vertex(0) << " 0 v2: " << clip_seg.vertex(1) << " 0" << std::endl;
-		clip_out << "l " << edgeIdx << " " << edgeIdx + 1 << std::endl;
-		edgeIdx += 2;
-	}
-	clip_out.close();
-
-	std::cout << "###################\n";
-	//extract the entire cropped Voronoi diagram
-	//ag.draw_dual(vor);
-
-	return 0;
-}
