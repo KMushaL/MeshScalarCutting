@@ -116,13 +116,17 @@ struct YourCode {
 int main()
 {
 	const std::string mesh_file(MODEL_DIR DELIMITER R"(cube.off)");
+	const static int numSamplePoints = 1;
 
-	const static int numSamplePoints = 2;
-	unit_test::testSamplingPoint(mesh_file, 2);
+	core::MSCuttingModel mscModel(mesh_file, numSamplePoints);
+	const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
+	mscModel.launch(ad_vis_file);
+
+	/*unit_test::testSamplingPoint(mesh_file, 2);
 
 	unit_test::testLocalGlobalTransoform(mesh_file, numSamplePoints);
 
-	unit_test::testComputeAD(mesh_file, numSamplePoints);
+	unit_test::testComputeAD(mesh_file, numSamplePoints);*/
 
 	return 0;
 }

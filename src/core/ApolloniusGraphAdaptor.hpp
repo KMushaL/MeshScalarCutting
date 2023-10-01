@@ -11,6 +11,7 @@
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Polygon_2.h>
 #include <CGAL/Point_3.h>
+#include <CGAL/Bbox_2.h>
 #include <CGAL/Delaunay_triangulation_2.h>
 #include <iterator>
 #include <CGAL/enum.h>
@@ -18,6 +19,7 @@
 typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
 typedef CGAL::Polygon_2<K>                                  Polygon_2;
 typedef CGAL::Triangle_2<K>									Triangle_2;
+typedef CGAL::Bbox_2										Bbox_2;
 typedef K::Point_2 Point_2;
 typedef K::Point_3 Point_3;
 typedef K::Vector_2 Vector_2;
@@ -44,45 +46,28 @@ namespace core
 		using ApolloniusDiagramPoint_2 = Point_2;
 		using ApolloniusDiagramLine_2 = Segment_2;
 
-		//A class to recover Voronoi diagram from stream.
+		/* A class to recover Voronoi diagram and shrink in a given boundary from stream. */
 		struct CroppedVoronoiFromApollonius {
-			std::list<Segment_2> m_cropped_vd;
-			Iso_rectangle_2 m_bbox;
+			std::vector<Segment_2> m_cropSegments;
+			Iso_rectangle_2 m_bbox; // m_boundary的bbox
+			Polygon_2 m_boundary;
 
 			CroppedVoronoiFromApollonius() noexcept = default;
-			CroppedVoronoiFromApollonius(const Iso_rectangle_2& bbox) :m_bbox(bbox) {}
+			CroppedVoronoiFromApollonius(const Polygon_2& _boundary) :m_boundary(_boundary) {
+				m_bbox = m_boundary.bbox()/* + Bbox_2(-1, -1, 1, 1)*/; // TODO: 是否有必要将boundingbox扩大一点？
+			}
 			CroppedVoronoiFromApollonius(const CroppedVoronoiFromApollonius& other) {
-				m_cropped_vd = other.m_cropped_vd;
+				m_cropSegments = other.m_cropSegments;
 				m_bbox = other.m_bbox;
-			}
-
-			template <class RSL>
-			void crop_and_extract_segment(const RSL& rsl) {
-				CGAL::Object obj = CGAL::intersection(rsl, m_bbox);
-				const Segment_2* s = CGAL::object_cast<Segment_2>(&obj);
-				if (s) m_cropped_vd.push_back(*s);
-			}
-
-			void operator<<(const Ray_2& ray) { crop_and_extract_segment(ray); }
-			void operator<<(const Line_2& line) { crop_and_extract_segment(line); }
-			void operator<<(const Segment_2& seg) { crop_and_extract_segment(seg); }
-
-			void reset() {
-				m_cropped_vd.erase(m_cropped_vd.begin(), m_cropped_vd.end());
-			}
-		};
-
-		/* shrink操作，将appollonius diagram中那些跑出边界(三角形)的边强制保留在边界内部 */
-		struct BoundaryApolloniusGraph
-		{
-			Polygon_2 m_boundary;
-			std::vector<Segment_2> clipSegments; // �ü�������б�
-
-			BoundaryApolloniusGraph() noexcept = default;
-			BoundaryApolloniusGraph(const Polygon_2& boundary) noexcept : m_boundary(boundary) {}
-			BoundaryApolloniusGraph(const BoundaryApolloniusGraph& other) {
 				m_boundary = other.m_boundary;
-				clipSegments = other.clipSegments;
+			}
+
+			bool isValidSeg(const Segment_2& seg)
+			{
+				// 一定要先判断是否为nan再判断是否是degenerate
+				return (!std::isnan(seg.vertex(0).x()) && !std::isnan(seg.vertex(1).y()) &&
+					!std::isnan(seg.vertex(0).x()) && !std::isnan(seg.vertex(1).y()) &&
+					!seg.is_degenerate());
 			}
 
 			std::vector<Point_2> Intersect(const Segment_2& seg)
@@ -113,46 +98,52 @@ namespace core
 				return intersection_points;
 			}
 
-			void operator<<(const Segment_2& seg)
-			{
-				if (seg.is_degenerate()) return;
-				CGAL::Bounded_side side1 = m_boundary.bounded_side(seg.source());
-				CGAL::Bounded_side side2 = m_boundary.bounded_side(seg.target());
-
-				// ����������ⲿֱ�����
-				if (side1 != CGAL::ON_UNBOUNDED_SIDE && side2 != CGAL::ON_UNBOUNDED_SIDE)
+			template <class RSL>
+			void crop_and_extract_segment(const RSL& rsl) {
+				// 先与bbox求交，因为传入的rsl是Ray_2类型
+				CGAL::Object obj = CGAL::intersection(rsl, m_bbox);
+				const Segment_2* s = CGAL::object_cast<Segment_2>(&obj);
+				// 再与boundary求交
+				if (s && isValidSeg(*s))
 				{
-					clipSegments.push_back(seg);
-					return;
-				}
-				std::vector<Point_2> intersection_points = Intersect(seg);
-				if (intersection_points.empty()) return;
+					const Segment_2 seg = *s;
 
-				Segment_2 clipSeg;
-				if (intersection_points.size() == 1)
-				{
-					if (side1 != CGAL::ON_BOUNDED_SIDE && side2 != CGAL::ON_BOUNDED_SIDE) return; // �����������ڵ�ֱ��return
-					Point_2 innerPoint = seg.source();
-					if (side2 == CGAL::ON_BOUNDED_SIDE) innerPoint = seg.target();
-					clipSeg = Segment_2(innerPoint, intersection_points[0]);
-				}
-				else
-				{
-					clipSeg = Segment_2(intersection_points[0], intersection_points[1]);
-				}
-				if (clipSeg.is_degenerate()) return;// �˻���
+					CGAL::Bounded_side side1 = m_boundary.bounded_side(seg.source());
+					CGAL::Bounded_side side2 = m_boundary.bounded_side(seg.target());
 
-				clipSegments.push_back(clipSeg);
+					// ����������ⲿֱ�����
+					if (side1 != CGAL::ON_UNBOUNDED_SIDE && side2 != CGAL::ON_UNBOUNDED_SIDE)
+					{
+						m_cropSegments.push_back(seg);
+						return;
+					}
+					std::vector<Point_2> intersection_points = Intersect(seg);
+					if (intersection_points.empty()) return;
+
+					Segment_2 clipSeg;
+					if (intersection_points.size() == 1)
+					{
+						if (side1 != CGAL::ON_BOUNDED_SIDE && side2 != CGAL::ON_BOUNDED_SIDE) return; // �����������ڵ�ֱ��return
+						Point_2 innerPoint = seg.source();
+						if (side2 == CGAL::ON_BOUNDED_SIDE) innerPoint = seg.target();
+						clipSeg = Segment_2(innerPoint, intersection_points[0]);
+					}
+					else
+					{
+						clipSeg = Segment_2(intersection_points[0], intersection_points[1]);
+					}
+					if (!isValidSeg(clipSeg)) return;// �˻���
+
+					m_cropSegments.push_back(clipSeg);
+				}
 			}
 
-			void operator<<(const K::Ray_2& ray)
-			{
-				std::cerr << "cannot be dealt\n";
-			}
+			void operator<<(const Ray_2& ray) { crop_and_extract_segment(ray); }
+			void operator<<(const Line_2& line) { crop_and_extract_segment(line); }
+			void operator<<(const Segment_2& seg) { crop_and_extract_segment(seg); }
 
-			void operator<<(const K::Line_2& line)
-			{
-				std::cerr << "cannot be dealt\n";
+			void reset() {
+				m_cropSegments.clear(); m_cropSegments.shrink_to_fit();
 			}
 		};
 
@@ -162,10 +153,7 @@ namespace core
 
 	public:
 		/* Constructor and Destructor */
-		ApolloniusGraphAdaptor() {
-			Iso_rectangle_2 bbox(-2000, -2000, 2000, 2000);
-			vor.m_bbox = bbox;
-		}
+		ApolloniusGraphAdaptor() noexcept = default;
 
 		ApolloniusGraphAdaptor(const ApolloniusGraphAdaptor& _other) {
 			vor = _other.vor;
@@ -178,6 +166,8 @@ namespace core
 			static_assert(std::is_same_v<typename Site::_Point, Point_2>, "POINT_IN_APOLLONIUS_GRAPH_MUST_BE_2-DIM");
 			static_assert(std::is_same_v<BD, Polygon_2> || std::is_same_v<BD, Triangle_2>, "TYPE_OF_BOUNDARY_IN_APOLLONIUS_GRAPH_MUST_BE_Polygon_2_OR_Triangle_2");
 
+			std::vector<Segment_2> adCropSegments; // 保存最后的结果
+
 			// iterate to extract Voronoi diagram edges around each vertex
 			Apollonius_graph ag;
 			for (int i = 0; i < sites.size(); ++i)
@@ -186,9 +176,11 @@ namespace core
 				ag.insert(site);
 			}
 
-			BoundaryApolloniusGraph bag(boundary);
+			vor = CroppedVoronoiFromApollonius(boundary);
+			//BoundaryApolloniusGraph bag(boundary);
 			for (auto vit = ag.finite_vertices_begin(); vit != ag.finite_vertices_end(); ++vit) {
 				//std::cout << "Vertex " << vit->site().point() << std::endl;
+				// ec为与生成的Apollonius Diagram的顶点vit相邻的所有边，边的另一端顶点可能是一个无限远的顶点，所以需要裁剪操作
 				Apollonius_graph::Edge_circulator ec = ag.incident_edges(vit), done(ec);
 				if (ec != 0) {
 					do {
@@ -196,20 +188,16 @@ namespace core
 					} while (++ec != done);
 				}
 				//print the cropped Voronoi diagram edges as segments
-				std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
+				/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
 					std::ostream_iterator<Segment_2>(std::cout, "\n"));
-				std::cout << "=========\n";
-				for (const auto& vor_seg : vor.m_cropped_vd)
-				{
-					bag << vor_seg;
-				}
+				std::cout << "=========\n";*/
+				
+				adCropSegments.insert(adCropSegments.end(), vor.m_cropSegments.begin(), vor.m_cropSegments.end());
 
 				vor.reset();
 			}
 
-			std::cout << 333 << std::endl;
-
-			return bag.clipSegments;
+			return adCropSegments;
 		}
 	};
 
