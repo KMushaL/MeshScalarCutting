@@ -112,7 +112,7 @@ namespace core
 
 	public:
 		/* API for user */
-		bool launch(const std::string& filename); // 传递的filename是最后计算结果保存的文件位置
+		bool launch(const std::string& ad_vis_file); // 传递的ad_vis_file是最后计算结果保存的文件位置
 
 	public:
 		/* Test APIs for us */

@@ -114,7 +114,6 @@ namespace core
 
 		// 计算Apollonius Diagram
 		auto adLineSegmentList = agAdaptor.computeAGForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
-		std::cout << "adLineSegmentList.size = " << adLineSegmentList.size() << std::endl;
 
 		// 遍历每条边，转回全局坐标
 		for (const auto& lineSegemnt : adLineSegmentList)
@@ -251,18 +250,27 @@ namespace core
 	* @param filename: 输出结果所保存的文件位置
 	* @return: 算法运行成功/错误
 	*/
-	bool MSCuttingModel::launch(const std::string& filename)
+	bool MSCuttingModel::launch(const std::string& ad_vis_file)
 	{
-		str_util::checkDir(filename);
-		std::ofstream out(filename);
-		if (!out) { LOG::qpError("I/O: File ", filename.c_str(), " could not be opened!"); return false; }
+		str_util::checkDir(ad_vis_file);
+		std::ofstream ad_vis_out(ad_vis_file);
+		if (!ad_vis_out) { LOG::qpError("I/O: File ", ad_vis_file.c_str(), " could not be opened!"); return false; }
 
 		samplePointPerEdge();
 
-		LOG::qpInfo("Output Apollonius Diagram to ", std::quoted(filename), " ...");
-		computeApolloniusGraph(out);
+		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, (std::string)"sample_points.obj");
+		str_util::checkDir(sample_vis_file);
+		std::ofstream sample_vis_out(sample_vis_file);
+		if (!sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
 
-		out.close();
+		LOG::qpInfo("Output Sample Points to ", std::quoted(ad_vis_file), " ...");
+		outputSamplePoints(sample_vis_out);
+		sample_vis_out.close();
+
+		LOG::qpInfo("Output Apollonius Diagram to ", std::quoted(ad_vis_file), " ...");
+		computeApolloniusGraph(ad_vis_out);
+		ad_vis_out.close();
+
 		return true;
 	}
 
@@ -324,63 +332,7 @@ namespace core
 
 	bool MSCuttingModel::testComputeADForFacet(int facetIdx, std::ofstream& out)
 	{
-		std::vector<Point_2> tri;
-		tri.emplace_back(Point_2(0, 0));
-		tri.emplace_back(Point_2(0, 2));
-		tri.emplace_back(Point_2(2, 0));
-		Polygon_2 tri_boundary(tri.begin(), tri.end());
-		std::vector<Point_2> sites = tri;
-		sites.emplace_back(Point_2(0, 1));
-		sites.emplace_back(Point_2(1, 0));
-		sites.emplace_back(Point_2(1, 1));
-
-		Apollonius_graph ag;
-		for (int i = 0; i < sites.size(); ++i)
-		{
-			const auto sitePoint = sites[i];
-			Apollonius_graph::Site_2 site(sitePoint, 0);
-			ag.insert(site);
-		}
-		Iso_rectangle_2 bbox(-2000, -2000, 2000, 2000);
-		ApolloniusGraphAdaptor::CroppedVoronoiFromApollonius vor(bbox);
-		ApolloniusGraphAdaptor::BoundaryApolloniusGraph bag(tri_boundary);
-		int edgeIdx = 1;
-		for (auto vit = ag.finite_vertices_begin(); vit != ag.finite_vertices_end(); ++vit) {
-			std::cout << "Vertex " << vit->site().point() << std::endl;
-			Apollonius_graph::Edge_circulator ec = ag.incident_edges(vit), done(ec);
-			if (ec != 0) {
-				do {
-					ag.draw_dual_edge(*ec, vor);
-					//std::cout << "Edge\n";
-				} while (++ec != done);
-			}
-			//print the cropped Voronoi diagram edges as segments
-			/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
-				std::ostream_iterator<Segment_2>(std::cout, "\n"));
-			std::cout << "=========\n";*/
-			for (const auto& vor_seg : vor.m_cropped_vd)
-			{
-				//ag_dual_segs.emplace_back(vor_seg);
-				//out << "v " << vor_seg.vertex(0) << " 0\nv " << vor_seg.vertex(1) << " 0" << std::endl;
-				//std::cout << "v1: " << vor_seg.vertex(0) << " 0 v2: " << vor_seg.vertex(1) << " 0" << std::endl;
-				//out << "l " << edgeIdx << " " << edgeIdx + 1 << std::endl;
-				//edgeIdx += 2;
-				bag << vor_seg;
-			}
-			vor.reset();
-		}
-
-		for (const auto& clip_seg : bag.clipSegments)
-		{
-			out << "v " << clip_seg.vertex(0) << " 0\nv " << clip_seg.vertex(1) << " 0" << std::endl;
-			//std::cout << "v1: " << clip_seg.vertex(0) << " 0 v2: " << clip_seg.vertex(1) << " 0" << std::endl;
-			out << "l " << edgeIdx << " " << edgeIdx + 1 << std::endl;
-			edgeIdx += 2;
-		}
-
-		//out.close();
-
-		/*samplePointPerEdge();
+		samplePointPerEdge();
 
 		// 保存当前面的ApolloniusDiagram顶点的信息
 		std::vector<ApolloniusDiagramPoint_3> facetADPoints;
@@ -393,6 +345,25 @@ namespace core
 
 		LOG::qpTest("The number of edges of Apollonius Diagram = ", numADLines);
 
+		// 输出facet
+		const std::string tri_out_file = R"(F:\VisualStudioProgram\MeshScalarCutting\vis\cube\tri.obj)";
+		std::ofstream tri_out(tri_out_file);
+		for (const auto& triPoint : this->getFaceVec()[facetIdx]->aroundVerts())
+		{
+			tri_out << "v " << triPoint->pos.transpose() << "\n";
+		}
+		tri_out << "f 1 2 3\n";
+
+		// 输出站点
+		const std::string site_out_file = R"(F:\VisualStudioProgram\MeshScalarCutting\vis\cube\sites.obj)";
+		std::ofstream site_out(site_out_file);
+		for (const auto& site: sampleFacets[facetIdx].sites)
+		{
+			site_out << "v " << getGlobalCoordInFacet(facetIdx, site.pos).transpose() << "\n";
+		}
+		tri_out.close();
+		site_out.close();
+
 		// 输出Apollonius Diagram中的所有全局坐标点
 		for (const auto& adPoint : facetADPoints)
 		{
@@ -403,7 +374,7 @@ namespace core
 		for (const auto& vertIdxPair : facetADLines)
 		{
 			out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
-		}*/
+		}
 
 		return true;
 	}
