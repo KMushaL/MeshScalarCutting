@@ -4,5 +4,14 @@ x64/
 *.obj
 include/
 data/
+model/
+vis/
+output/
 packages/
 *.7z
+*.vcxproj
+*.filters
+*.user
+*.sln
+*.config
+*.dll

@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props" Condition="Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -18,6 +17,34 @@
       <Configuration>Release</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\app\main.cpp" />
+    <ClCompile Include="src\core\MSCuttingModel.cpp" />
+    <ClCompile Include="src\geometry\BaseMesh.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\Config.hpp" />
+    <ClInclude Include="src\core\ApolloniusGraphAdaptor.hpp" />
+    <ClInclude Include="src\core\MSCuttingModel.hpp" />
+    <ClInclude Include="src\core\test\ADComputingTest.hpp" />
+    <ClInclude Include="src\core\test\CoreTest.hpp" />
+    <ClInclude Include="src\core\test\LocalGlobalTest.hpp" />
+    <ClInclude Include="src\core\test\PointSamplingTest.hpp" />
+    <ClInclude Include="src\detail\BasicDataType.hpp" />
+    <ClInclude Include="src\detail\Handler.hpp" />
+    <ClInclude Include="src\detail\Math.hpp" />
+    <ClInclude Include="src\geometry\BaseMesh.hpp" />
+    <ClInclude Include="src\geometry\Geometry.hpp" />
+    <ClInclude Include="src\geometry\PolyMesh.hpp" />
+    <ClInclude Include="src\utils\CMDParser.hpp" />
+    <ClInclude Include="src\utils\Common.hpp" />
+    <ClInclude Include="src\utils\String.hpp" />
+    <ClInclude Include="src\utils\Timer.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="src\geometry\PolyMesh.inl" />
+    <None Include="src\utils\CMDParser.inl" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
@@ -71,6 +98,9 @@
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnabled>false</VcpkgEnabled>
+  </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
@@ -105,12 +135,17 @@
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\temp\demo1\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>F:\CG3rdParty\eigen-3.4.0;F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\include;F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\auxiliary\gmp\include;F:\CG3rdParty\boost_1_80_0;F:\CG3rdParty\libigl\include;.\include;.\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>None</DebugInformationFormat>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+        F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\auxiliary\gmp\lib;F:\CG3rdParty\boost_1_80_0\libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libgmp-10.lib;libmpfr-4.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -121,32 +156,20 @@
       <SDLCheck>false</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>F:\CG3rdParty\eigen-3.4.0;F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\include;F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\auxiliary\gmp\include;F:\CG3rdParty\boost_1_80_0;F:\CG3rdParty\libigl\include;.\include;.\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <DebugInformationFormat>OldStyle</DebugInformationFormat>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <OpenMPSupport>true</OpenMPSupport>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalLibraryDirectories>
+        F:\CG3rdParty\CGAL-5.5.1\CGAL-5.5.1\auxiliary\gmp\lib;F:\CG3rdParty\boost_1_80_0\libs;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>libgmp-10.lib;libmpfr-4.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClCompile Include="ag2_exact_traits.h" />
-    <ClCompile Include="main.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-    <Import Project="packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets" Condition="Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets')" />
-  </ImportGroup>
-  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
-    <PropertyGroup>
-      <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用“NuGet 程序包还原”可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
-    </PropertyGroup>
-    <Error Condition="!Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.props'))" />
-    <Error Condition="!Exists('packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\vcpkg.C.Library.vcpkg.1.0.0\build\native\vcpkg.C.Library.vcpkg.targets'))" />
-  </Target>
 </Project>
