@@ -3,6 +3,7 @@ x64/
 *.cs
 *.obj
 include/
+!include/memory/
 data/
 model/
 vis/

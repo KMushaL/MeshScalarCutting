@@ -45,6 +45,12 @@ namespace core
 			Point_2 endVert_dim2 = Point_2((endVert_dim3 - v1).dot(x_basis), (endVert_dim3 - v1).dot(y_basis));
 
 			site.pos = endVert_dim2;
+
+			std::cout << "i = " << i << " site.pos = " << endVert_dim3 << std::endl;
+			if (i == 0) site.weight = 0.6;
+			else if (i == 1) site.weight = -0.6;
+			else if (i == 2) site.weight = 0;
+
 			//TODO: site.weight = ?
 			curSampleFacet.sites.emplace_back(site);
 
@@ -62,6 +68,10 @@ namespace core
 
 			site.pos = sampleVert_dim2;
 			//TODO: site.weight = ?
+
+			Scalar f_s = scalarFunc.val(sampleVert_dim3);
+			Vector3 f_grad = scalarFunc.grad(sampleVert_dim3);
+
 			curSampleFacet.sites.emplace_back(site);
 		}
 
@@ -99,9 +109,9 @@ namespace core
 	* @param facetIdx: 面的索引
 	* @return: Apollonius Diagram边的数量
 	*/
-	int MSCuttingModel::computeApolloniusGraphForFacet(int facetIdx, 
-		int& globalOutVertIdx, 
-		std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints, 
+	int MSCuttingModel::computeApolloniusGraphForFacet(int facetIdx,
+		int& globalOutVertIdx,
+		std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
 		std::vector<std::pair<int, int>>& apolloniusDiagramLines)
 	{
 		// 从local point到输出下标的映射，主要用于防止输出重复的点
@@ -175,9 +185,12 @@ namespace core
 			// 两个端点坐标
 			const Point3 vert_1 = mEdge->firstVertex()->pos;
 			const Point3 vert_2 = mEdge->secondVertex()->pos;
-			// 关联的两个面
-			const int facet_1 = mEdge->halfEdge()->boundFace()->index;
-			const int facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
+			// 关联的两个(或一个)面
+			int facet_1 = -1, facet_2 = -1;
+			if (!mEdge->halfEdge()->isBoundary())
+				facet_1 = mEdge->halfEdge()->boundFace()->index;
+			if (!mEdge->halfEdge()->oppoHEdge()->isBoundary())
+				facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
 
 			const EdgeDir edgeDir = vert_2 - vert_1;
 
@@ -188,8 +201,10 @@ namespace core
 				SamplePoint samplePoint(samplePointPos, mEdge->index);
 
 				// push结果
-				sampleFacets[facet_1].aroundSamplePoints.emplace_back(samplePoint);
-				sampleFacets[facet_2].aroundSamplePoints.emplace_back(samplePoint);
+				if (facet_1 != -1)
+					sampleFacets[facet_1].aroundSamplePoints.emplace_back(samplePoint);
+				if (facet_2 != -1)
+					sampleFacets[facet_2].aroundSamplePoints.emplace_back(samplePoint);
 
 				samplePoints.emplace_back(samplePoint);
 			}
@@ -211,7 +226,7 @@ namespace core
 		{
 			// 保存当前面的ApolloniusDiagram顶点的信息
 			std::vector<ApolloniusDiagramPoint_3> curFacetADPoints;
-			
+
 			// 保存当前面的ApolloniusDiagram边的信息(通过顶点的输出索引进行存储)
 			std::vector<std::pair<int, int>> curFacetADLines;
 
@@ -293,7 +308,7 @@ namespace core
 		const auto& aroundSamplePoints = curSampleFacet.aroundSamplePoints;
 		// 输出所有原始采样点的坐标
 		LOG::qpTest("Original points:");
-		for(const auto& point_3: aroundEndVerts)
+		for (const auto& point_3 : aroundEndVerts)
 		{
 			LOG::qpNormal("v: ", point_3->pos.transpose());
 		}
@@ -357,7 +372,7 @@ namespace core
 		// 输出站点
 		const std::string site_out_file = R"(F:\VisualStudioProgram\MeshScalarCutting\vis\cube\sites.obj)";
 		std::ofstream site_out(site_out_file);
-		for (const auto& site: sampleFacets[facetIdx].sites)
+		for (const auto& site : sampleFacets[facetIdx].sites)
 		{
 			site_out << "v " << getGlobalCoordInFacet(facetIdx, site.pos).transpose() << "\n";
 		}

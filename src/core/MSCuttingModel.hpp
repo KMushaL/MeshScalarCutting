@@ -25,6 +25,13 @@ namespace core
 		using ApolloniusDiagramLine_2 = typename ApolloniusGraphAdaptor::ApolloniusDiagramLine_2;
 		using ApolloniusDiagramPoint_3 = Eigen::Vector3d;
 		using ApolloniusDiagramLine_3 = std::pair<ApolloniusDiagramPoint_3, ApolloniusDiagramPoint_3>;
+		using ScalarValFunc = std::function<Scalar(const ApolloniusDiagramPoint_3&)>;
+		using GradFunc = std::function<Eigen::Vector3d(const ApolloniusDiagramPoint_3&)>;
+
+		struct ScalarFunc {
+			ScalarValFunc val;
+			GradFunc grad;
+		};
 
 		/* 采样点定义 */
 		struct SamplePoint {
@@ -68,19 +75,21 @@ namespace core
 
 		ApolloniusGraphAdaptor agAdaptor;
 
+		ScalarFunc scalarFunc; // 标量函数
+
 	public:
 		/* Constructor and Destructor */
 		MSCuttingModel() noexcept = default;
 
-		MSCuttingModel(const std::string& filename, int _numSamples) noexcept :
-			PolyMesh(filename), numSamplesPerEdge(_numSamples) {
+		MSCuttingModel(const std::string& filename, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
+			PolyMesh(filename), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
 			samplePoints.reserve(_numSamples * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			agAdaptor = ApolloniusGraphAdaptor();
 		}
 
-		MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}
+		//MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}
 
 		~MSCuttingModel() noexcept = default;
 
