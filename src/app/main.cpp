@@ -113,12 +113,25 @@ struct YourCode {
 	}
 };
 
+using ScalarFunc = core::MSCuttingModel::ScalarFunc;
+
+Scalar val(const Eigen::Vector3d& p)
+{
+	return p.x() * p.x() + p.y() * p.y() + p.z() * p.z() - 1;
+}
+
+Eigen::Vector3d grad(const Eigen::Vector3d& p)
+{
+	return 2 * p;
+}
+
 int main()
 {
-	const std::string mesh_file(MODEL_DIR DELIMITER R"(cube.off)");
-	const static int numSamplePoints = 1;
+	const std::string mesh_file(MODEL_DIR DELIMITER R"(singleTri.obj)");
+	const static int numSamplePoints = 0;
 
-	core::MSCuttingModel mscModel(mesh_file, numSamplePoints);
+	ScalarFunc scalarFunc = { val, grad };
+	core::MSCuttingModel mscModel(mesh_file, scalarFunc, numSamplePoints);
 	const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
 	mscModel.launch(ad_vis_file);
 
