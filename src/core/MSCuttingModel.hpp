@@ -37,9 +37,12 @@ namespace core
 		struct SamplePoint {
 			int mEdgeIdx = -1;								// 属于的边(注意是model edge，而不是half edge)
 			Eigen::Vector3d pos;							// 采样点坐标
+			double val;
 
 			SamplePoint() {}
-			SamplePoint(const Eigen::Vector3d& _pos, int _mEdgeIdx) :pos(_pos), mEdgeIdx(_mEdgeIdx) {}
+			SamplePoint(const Eigen::Vector3d& _pos, int _mEdgeIdx, double _val) :pos(_pos), mEdgeIdx(_mEdgeIdx), val(_val) {}
+
+			SamplePoint(const SamplePoint& other) { mEdgeIdx = other.mEdgeIdx; pos = other.pos; val = other.val; }
 		};
 
 		/* (二维)带权重点(站点)定义 */
@@ -70,7 +73,11 @@ namespace core
 		/* Data */
 		int numSamplesPerEdge;  // 每条边固定的采样数量 TODO：后期不可能固定
 
-		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点
+		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
+
+		// TODO: 目前合理的条件是相邻点对的隐函数值异号
+		std::vector<SamplePoint> validSamplePoints; // 整个模型所有边上那些合理的采样点(可能包括边的端点)
+
 		std::vector<SampleFacet> sampleFacets; // 包含了边采样点的模型面
 
 		ApolloniusGraphAdaptor agAdaptor;
@@ -89,7 +96,15 @@ namespace core
 			agAdaptor = ApolloniusGraphAdaptor();
 		}
 
-		//MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}
+		MSCuttingModel(const std::string& filename, int _numSamples) noexcept :
+			PolyMesh(filename), numSamplesPerEdge(_numSamples) {
+			samplePoints.reserve(_numSamples * numMeshEdges);
+			sampleFacets.resize(numMeshFaces, SampleFacet());
+
+			agAdaptor = ApolloniusGraphAdaptor();
+		}
+
+		MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}
 
 		~MSCuttingModel() noexcept = default;
 
@@ -117,7 +132,7 @@ namespace core
 
 	private:
 		/* Visualization */
-		void outputSamplePoints(std::ofstream& out);
+		void outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2);
 
 	public:
 		/* API for user */
@@ -125,7 +140,7 @@ namespace core
 
 	public:
 		/* Test APIs for us */
-		bool testSamplingPoints(std::ofstream& out);
+		bool testSamplingPoints(std::ofstream& out_1, std::ofstream& out_2);
 
 		bool testLocalGlobalTransform(int facetIdx);
 
