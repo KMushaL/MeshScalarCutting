@@ -192,10 +192,11 @@ namespace geometry
 		Matrix<Scalar, 4, 4> calcTransformMatrix();
 
 		//template<typename = std::enable_if_t<isNormalized>>
-		void meshNorm();
-
-		//template<typename = std::enable_if_t<isNormalized>>
 		void meshInverseNorm();
+
+	public:
+		//template<typename = std::enable_if_t<isNormalized>>
+		void meshNorm();
 
 	protected:
 		/* Methods for transforming the mesh */

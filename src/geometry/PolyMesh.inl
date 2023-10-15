@@ -6,6 +6,7 @@
 #include "utils/Common.hpp"
 #include <omp.h>
 #include <igl/read_triangle_mesh.h>
+#include <igl/writeOBJ.h>
 
 NAMESPACE_BEGIN(mscut)
 namespace geometry
@@ -766,6 +767,11 @@ namespace geometry
 
 		numMeshVerts = vertMat.rows();
 		numMeshFaces = faceMat.rows();
+	}
+
+	inline void PolyMesh::writeToOBJ(const std::string& out_file)
+	{
+		igl::writeOBJ(out_file, vertMat, faceMat);
 	}
 
 } // namespace geometry

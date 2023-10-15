@@ -194,19 +194,48 @@ namespace core
 
 			const EdgeDir edgeDir = vert_2 - vert_1;
 
-			for (int k = 0; k < numSamplesPerEdge; ++k)
+			Point3 preSamplePointPos = vert_1;
+			Scalar preSamplePointVal = scalarFunc.val(vert_1);
+			SamplePoint preSamplePoint(preSamplePointPos, mEdge->index, preSamplePointVal);
+
+			int preInsertedIdx = -1;
+			bool preIsLargeZero = (preSamplePointVal > 0);
+			for (int k = 0; k < numSamplesPerEdge + 1; ++k) // +1 是为了涵盖另一个端点vert_2
 			{
 				// 计算采样点位置
-				Point3 samplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
-				SamplePoint samplePoint(samplePointPos, mEdge->index);
+				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
+				// 计算当前采样点的值
+				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
 
-				// push结果
-				if (facet_1 != -1)
-					sampleFacets[facet_1].aroundSamplePoints.emplace_back(samplePoint);
-				if (facet_2 != -1)
-					sampleFacets[facet_2].aroundSamplePoints.emplace_back(samplePoint);
+				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
-				samplePoints.emplace_back(samplePoint);
+				bool curIsLargeZero = (curSamplePointVal > 0);
+				if (curIsLargeZero ^ preIsLargeZero)
+				{
+					if (preInsertedIdx != k - 1) validSamplePoints.emplace_back(preSamplePoint);
+					validSamplePoints.emplace_back(curSamplePoint);
+
+					// push结果
+					if (facet_1 != -1)
+					{
+						if (preInsertedIdx != k - 1) sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
+						sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
+
+					}
+					if (facet_2 != -1)
+					{
+						if (preInsertedIdx != k - 1) sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
+						sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
+					}
+
+					preInsertedIdx = k;
+				}
+
+				preSamplePointPos = curSamplePointPos;
+				preIsLargeZero = curIsLargeZero;
+				preSamplePoint = curSamplePoint;
+
+				samplePoints.emplace_back(curSamplePoint);
 			}
 		}
 
@@ -251,11 +280,22 @@ namespace core
 	* @brief: Visualization of sample points on each edge
 	* @param out: 可视化结果的输出流
 	*/
-	void MSCuttingModel::outputSamplePoints(std::ofstream& out)
+	void MSCuttingModel::outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2)
 	{
-		for (const auto& samplePoint : samplePoints)
+		if (out_1)
 		{
-			out << "v " << samplePoint.pos.transpose() << std::endl;
+			for (const auto& samplePoint : samplePoints)
+			{
+				out_1 << "v " << samplePoint.pos.transpose() << std::endl;
+			}
+		}
+
+		if (out_2)
+		{
+			for (const auto& validSamplePoint : validSamplePoints)
+			{
+				out_2 << "v " << validSamplePoint.pos.transpose() << std::endl;
+			}
 		}
 	}
 
@@ -290,11 +330,11 @@ namespace core
 	}
 
 	/* Test APIs for us */
-	bool MSCuttingModel::testSamplingPoints(std::ofstream& out)
+	bool MSCuttingModel::testSamplingPoints(std::ofstream& out_1, std::ofstream& out_2)
 	{
 		samplePointPerEdge();
 
-		outputSamplePoints(out);
+		outputSamplePoints(out_1, out_2);
 
 		return true;
 	}

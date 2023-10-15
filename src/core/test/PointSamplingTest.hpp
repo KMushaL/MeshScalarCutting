@@ -22,11 +22,18 @@ namespace unit_test
 		std::ofstream vis_out(vis_file);
 		if (!vis_out) { LOG::qpError("I/O: File ", vis_file.c_str(), " could not be opened!"); return false; }
 
-		LOG::qpTest("Output sample points to ", std::quoted(vis_file), " ...");
+		const std::string valid_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"valid_sample.obj");
+		str_util::checkDir(valid_vis_file);
+		std::ofstream valid_vis_out(valid_vis_file);
+		if (!vis_out) { LOG::qpError("I/O: File ", valid_vis_file.c_str(), " could not be opened!"); return false; }
 
-		bool res = mscModel.testSamplingPoints(vis_out);
+		LOG::qpTest("Output sample points to ", std::quoted(vis_file), " ...");
+		LOG::qpTest("Output valid sample points to ", std::quoted(valid_vis_file), " ...");
+
+		bool res = mscModel.testSamplingPoints(vis_out, valid_vis_out);
 
 		vis_out.close();
+		valid_vis_out.close();
 		return res;
 	}
 
