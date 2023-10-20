@@ -162,7 +162,7 @@ namespace core
 
 	public:
 		template<class Site, class BD>
-		std::vector<Segment_2> computeAGForBoundary(const std::vector<Site>& sites, const BD& boundary)
+		std::vector<Segment_2> computeAGForBoundary(const std::vector<Site>& sites/*, const std::vector<bool>& flags*/, const BD& boundary)
 		{
 			static_assert(std::is_same_v<typename Site::_Point, Point_2>, "POINT_IN_APOLLONIUS_GRAPH_MUST_BE_2-DIM");
 			static_assert(std::is_same_v<BD, Polygon_2> || std::is_same_v<BD, Triangle_2>, "TYPE_OF_BOUNDARY_IN_APOLLONIUS_GRAPH_MUST_BE_Polygon_2_OR_Triangle_2");
@@ -173,7 +173,10 @@ namespace core
 			Apollonius_graph ag;
 			for (int i = 0; i < sites.size(); ++i)
 			{
-				Apollonius_graph::Site_2 site(sites[i].pos, sites[i].weight);
+				K::Vector_2 vec((rand() / (double)RAND_MAX - 0.5) * 0.00001,
+					(rand() / (double)RAND_MAX - 0.5) * 0.00001);
+
+				Apollonius_graph::Site_2 site(sites[i].pos + vec, sites[i].weight);
 				ag.insert(site);
 			}
 
@@ -185,6 +188,13 @@ namespace core
 				Apollonius_graph::Edge_circulator ec = ag.incident_edges(vit), done(ec);
 				if (ec != 0) {
 					do {
+						/*auto site1 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::ccw(ec->second))->site().point();
+						auto site2 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::cw(ec->second))->site().point();
+
+						auto fuc = [&](K::Point_2 pt) {
+							return (pt.x() + 1) * (pt.x() + 1) + pt.y() * pt.y() - 2.25;
+						};*/
+
 						ag.draw_dual_edge(*ec, vor);
 					} while (++ec != done);
 				}

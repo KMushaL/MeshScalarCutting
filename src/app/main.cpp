@@ -19,8 +19,8 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 
 int main()
 {
-	const std::string mesh_file(MODEL_DIR DELIMITER R"(cube.obj)");
-	const static int numSamplePoints = 2;
+	const std::string mesh_file(MODEL_DIR DELIMITER R"(square.obj)");
+	const static int numSamplePoints = 20;
 
 	ScalarFunc scalarFunc = { val, grad };
 	core::MSCuttingModel mscModel(mesh_file, scalarFunc, numSamplePoints);
