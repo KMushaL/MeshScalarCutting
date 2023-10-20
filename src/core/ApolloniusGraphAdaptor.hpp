@@ -111,19 +111,20 @@ namespace core
 					CGAL::Bounded_side side1 = m_boundary.bounded_side(seg.source());
 					CGAL::Bounded_side side2 = m_boundary.bounded_side(seg.target());
 
-					// ����������ⲿֱ�����
 					if (side1 != CGAL::ON_UNBOUNDED_SIDE && side2 != CGAL::ON_UNBOUNDED_SIDE)
 					{
 						m_cropSegments.push_back(seg);
 						return;
 					}
+
 					std::vector<Point_2> intersection_points = Intersect(seg);
+
 					if (intersection_points.empty()) return;
 
 					Segment_2 clipSeg;
 					if (intersection_points.size() == 1)
 					{
-						if (side1 != CGAL::ON_BOUNDED_SIDE && side2 != CGAL::ON_BOUNDED_SIDE) return; // �����������ڵ�ֱ��return
+						if (side1 != CGAL::ON_BOUNDED_SIDE && side2 != CGAL::ON_BOUNDED_SIDE) return;
 						Point_2 innerPoint = seg.source();
 						if (side2 == CGAL::ON_BOUNDED_SIDE) innerPoint = seg.target();
 						clipSeg = Segment_2(innerPoint, intersection_points[0]);
@@ -132,7 +133,7 @@ namespace core
 					{
 						clipSeg = Segment_2(intersection_points[0], intersection_points[1]);
 					}
-					if (!isValidSeg(clipSeg)) return;// �˻���
+					if (!isValidSeg(clipSeg)) return;
 
 					m_cropSegments.push_back(clipSeg);
 				}
@@ -191,7 +192,7 @@ namespace core
 				/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
 					std::ostream_iterator<Segment_2>(std::cout, "\n"));
 				std::cout << "=========\n";*/
-				
+
 				adCropSegments.insert(adCropSegments.end(), vor.m_cropSegments.begin(), vor.m_cropSegments.end());
 
 				vor.reset();

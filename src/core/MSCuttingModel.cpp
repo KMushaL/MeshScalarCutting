@@ -46,13 +46,13 @@ namespace core
 
 			site.pos = endVert_dim2;
 
-			std::cout << "i = " << i << " site.pos = " << endVert_dim3 << std::endl;
-			if (i == 0) site.weight = 0.6;
+			//std::cout << "i = " << i << " site.pos = " << endVert_dim3 << std::endl;
+			/*if (i == 0) site.weight = 0.6;
 			else if (i == 1) site.weight = -0.6;
-			else if (i == 2) site.weight = 0;
+			else if (i == 2) site.weight = 0;*/
 
-			//TODO: site.weight = ?
-			curSampleFacet.sites.emplace_back(site);
+			/*site.weight = -scalarFunc.val(endVert_dim3) / scalarFunc.grad(endVert_dim3).norm();
+			curSampleFacet.sites.emplace_back(site);*/
 
 			// 更新边界信息
 			facetBoundary.push_back(site.pos);
@@ -67,10 +67,24 @@ namespace core
 			Point_2 sampleVert_dim2 = Point_2((sampleVert_dim3 - v1).dot(x_basis), (sampleVert_dim3 - v1).dot(y_basis));
 
 			site.pos = sampleVert_dim2;
-			//TODO: site.weight = ?
 
 			Scalar f_s = scalarFunc.val(sampleVert_dim3);
 			Vector3 f_grad = scalarFunc.grad(sampleVert_dim3);
+
+			/*if (sampleVert_dim3.isApprox(Eigen::Vector3d(0.3333333, 0, 0.3333333), 1e-6))
+			{
+				site.weight = 0.3;
+			}
+			else if (sampleVert_dim3.isApprox(Eigen::Vector3d(0.6666666, 0, 0.6666666), 1e-6))
+			{
+				site.weight = 0.03;
+			}
+			else*/
+			{
+				site.weight = -f_s / f_grad.norm();
+			}
+
+			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
 
 			curSampleFacet.sites.emplace_back(site);
 		}
@@ -209,22 +223,26 @@ namespace core
 
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
-				bool curIsLargeZero = (curSamplePointVal > 0);
+				bool curIsLargeZero = (curSamplePointVal > 0); // TODO: = 0 的情况该怎么处理？判断是不是切点
 				if (curIsLargeZero ^ preIsLargeZero)
 				{
-					if (preInsertedIdx != k - 1) validSamplePoints.emplace_back(preSamplePoint);
+					if (preInsertedIdx != k - 1 || k == 0) validSamplePoints.emplace_back(preSamplePoint);
 					validSamplePoints.emplace_back(curSamplePoint);
+
+					/*std::cout << "preSamplePoint = " << preSamplePointPos.transpose() << " val = " << preSamplePointVal << "\n";
+					std::cout << "curSamplePoint = " << curSamplePointPos.transpose() << " val = " << curSamplePointVal << "\n";
+					LOG::qpSplit();*/
 
 					// push结果
 					if (facet_1 != -1)
 					{
-						if (preInsertedIdx != k - 1) sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
+						if (preInsertedIdx != k - 1 || k == 0) sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
 						sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
 
 					}
 					if (facet_2 != -1)
 					{
-						if (preInsertedIdx != k - 1) sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
+						if (preInsertedIdx != k - 1 || k == 0) sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
 						sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
 					}
 
@@ -318,8 +336,13 @@ namespace core
 		std::ofstream sample_vis_out(sample_vis_file);
 		if (!sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
 
+		const std::string valid_sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, (std::string)"valid_sample_points.obj");
+		str_util::checkDir(valid_sample_vis_file);
+		std::ofstream valid_sample_vis_out(valid_sample_vis_file);
+		if (!valid_sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
+
 		LOG::qpInfo("Output Sample Points to ", std::quoted(ad_vis_file), " ...");
-		outputSamplePoints(sample_vis_out);
+		outputSamplePoints(sample_vis_out, valid_sample_vis_out);
 		sample_vis_out.close();
 
 		LOG::qpInfo("Output Apollonius Diagram to ", std::quoted(ad_vis_file), " ...");
