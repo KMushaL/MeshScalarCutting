@@ -7,15 +7,17 @@ namespace unit_test
 {
 	using namespace detail;
 	using namespace core;
+	using ScalarFunc = core::MSCuttingModel::ScalarFunc;
 
-	inline bool testSamplingPoint(const std::string& mesh_file, int numSamples)
+	inline bool testSamplingPoint(const std::string& mesh_file, const ScalarFunc& func, int numSamples)
 	{
 		if (numSamples <= 0)
 		{
 			LOG::qpTest("The number of sample points must larger than 0!");
 			return false;
 		}
-		MSCuttingModel mscModel(mesh_file, numSamples);
+		MSCuttingModel mscModel(mesh_file, func, numSamples);
+		mscModel.meshNorm();
 
 		const std::string vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"sample.obj");
 		str_util::checkDir(vis_file);
