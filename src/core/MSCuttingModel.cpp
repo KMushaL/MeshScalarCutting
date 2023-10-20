@@ -81,7 +81,7 @@ namespace core
 			}
 			else*/
 			{
-				site.weight = -f_s / f_grad.norm();
+				site.weight = abs(-f_s / f_grad.norm()) * 0.8;
 			}
 
 			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
@@ -213,8 +213,8 @@ namespace core
 			SamplePoint preSamplePoint(preSamplePointPos, mEdge->index, preSamplePointVal);
 
 			int preInsertedIdx = -1;
-			bool preIsLargeZero = (preSamplePointVal > 0);
-			for (int k = 0; k < numSamplesPerEdge + 1; ++k) // +1 是为了涵盖另一个端点vert_2
+			//bool preIsLargeZero = (preSamplePointVal > 0);
+			for (int k = -1; k < numSamplesPerEdge + 1; ++k) // +1 是为了涵盖另一个端点vert_2
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
@@ -223,11 +223,11 @@ namespace core
 
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
-				bool curIsLargeZero = (curSamplePointVal > 0); // TODO: = 0 的情况该怎么处理？判断是不是切点
-				if (curIsLargeZero ^ preIsLargeZero)
+				//bool curIsLargeZero = (curSamplePointVal > 0); // TODO: = 0 的情况该怎么处理？判断是不是切点
+				//if (curIsLargeZero ^ preIsLargeZero)
 				{
-					if (preInsertedIdx != k - 1 || k == 0) validSamplePoints.emplace_back(preSamplePoint);
-					validSamplePoints.emplace_back(curSamplePoint);
+					/*if (preInsertedIdx != k - 1 || k == 0) validSamplePoints.emplace_back(preSamplePoint);
+					validSamplePoints.emplace_back(curSamplePoint);*/
 
 					/*std::cout << "preSamplePoint = " << preSamplePointPos.transpose() << " val = " << preSamplePointVal << "\n";
 					std::cout << "curSamplePoint = " << curSamplePointPos.transpose() << " val = " << curSamplePointVal << "\n";
@@ -236,22 +236,22 @@ namespace core
 					// push结果
 					if (facet_1 != -1)
 					{
-						if (preInsertedIdx != k - 1 || k == 0) sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
+						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
 						sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
 
 					}
 					if (facet_2 != -1)
 					{
-						if (preInsertedIdx != k - 1 || k == 0) sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
+						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
 						sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
 					}
 
 					preInsertedIdx = k;
 				}
 
-				preSamplePointPos = curSamplePointPos;
+				/*preSamplePointPos = curSamplePointPos;
 				preIsLargeZero = curIsLargeZero;
-				preSamplePoint = curSamplePoint;
+				preSamplePoint = curSamplePoint;*/
 
 				samplePoints.emplace_back(curSamplePoint);
 			}
