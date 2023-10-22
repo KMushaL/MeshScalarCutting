@@ -46,11 +46,6 @@ namespace core
 
 			site.pos = endVert_dim2;
 
-			//std::cout << "i = " << i << " site.pos = " << endVert_dim3 << std::endl;
-			/*if (i == 0) site.weight = 0.6;
-			else if (i == 1) site.weight = -0.6;
-			else if (i == 2) site.weight = 0;*/
-
 			/*site.weight = -scalarFunc.val(endVert_dim3) / scalarFunc.grad(endVert_dim3).norm();
 			curSampleFacet.sites.emplace_back(site);*/
 
@@ -68,23 +63,13 @@ namespace core
 
 			site.pos = sampleVert_dim2;
 
-			Scalar f_s = scalarFunc.val(sampleVert_dim3);
+			Scalar f_val = scalarFunc.val(sampleVert_dim3);
 			Vector3 f_grad = scalarFunc.grad(sampleVert_dim3);
 
-			/*if (sampleVert_dim3.isApprox(Eigen::Vector3d(0.3333333, 0, 0.3333333), 1e-6))
-			{
-				site.weight = 0.3;
-			}
-			else if (sampleVert_dim3.isApprox(Eigen::Vector3d(0.6666666, 0, 0.6666666), 1e-6))
-			{
-				site.weight = 0.03;
-			}
-			else*/
-			{
-				site.weight = abs(-f_s / f_grad.norm()) * 0.8;
-			}
+			site.f_val = f_val;
+			site.weight = abs(-f_val / f_grad.norm()) /** 0.9*/;
 
-			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
+			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
 
 			curSampleFacet.sites.emplace_back(site);
 		}

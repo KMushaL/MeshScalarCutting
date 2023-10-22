@@ -50,6 +50,7 @@ namespace core
 			using _Point = ApolloniusDiagramPoint_2;
 			_Point pos;
 			double weight = 0;								// 先都设为0
+			double f_val = DINF;
 
 			WeightPoint() {}
 			WeightPoint(const _Point& _pos, double _weight) :pos(_pos), weight(_weight) {}
