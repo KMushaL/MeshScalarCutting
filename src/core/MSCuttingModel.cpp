@@ -67,7 +67,9 @@ namespace core
 			Vector3 f_grad = scalarFunc.grad(sampleVert_dim3);
 
 			site.f_val = f_val;
-			site.weight = abs(-f_val / f_grad.norm()) /** 0.9*/;
+			/*site.weight = abs(-f_val / f_grad.norm()) * 0.9*/;
+			double  _weight = f_val / f_grad.norm();
+			site.weight = _weight * _weight * 1.1;
 
 			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
 
@@ -122,7 +124,8 @@ namespace core
 		updateFacetLocalCoord(facetIdx, facetBoundary);
 
 		// 计算Apollonius Diagram
-		auto adLineSegmentList = agAdaptor.computeAGForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
+		//auto adLineSegmentList = agAdaptor.computeAGForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
+		auto adLineSegmentList = pdAdaptor.computePDForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
 
 		// 遍历每条边，转回全局坐标
 		for (const auto& lineSegemnt : adLineSegmentList)
@@ -242,7 +245,7 @@ namespace core
 			}
 		}
 
-		assert(samplePoints.size() == (numSamplesPerEdge * modelEdges.size()));
+		//assert(samplePoints.size() == (numSamplesPerEdge * modelEdges.size()));
 
 		return samplePoints.size();
 	}
