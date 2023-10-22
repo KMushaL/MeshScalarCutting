@@ -169,14 +169,19 @@ namespace core
 
 			std::vector<Segment_2> adCropSegments; // 保存最后的结果
 
+			std::unordered_map<Point_2, int> siteToIdx;
+
 			// iterate to extract Voronoi diagram edges around each vertex
 			Apollonius_graph ag;
 			for (int i = 0; i < sites.size(); ++i)
 			{
+				// 扰动项
 				K::Vector_2 vec((rand() / (double)RAND_MAX - 0.5) * 0.00001,
 					(rand() / (double)RAND_MAX - 0.5) * 0.00001);
 
-				Apollonius_graph::Site_2 site(sites[i].pos + vec, sites[i].weight);
+				const Point_2 disturbPos = sites[i].pos + vec;
+				Apollonius_graph::Site_2 site(disturbPos, sites[i].weight);
+				siteToIdx.insert(std::make_pair(disturbPos, i));
 				ag.insert(site);
 			}
 
@@ -188,14 +193,12 @@ namespace core
 				Apollonius_graph::Edge_circulator ec = ag.incident_edges(vit), done(ec);
 				if (ec != 0) {
 					do {
-						/*auto site1 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::ccw(ec->second))->site().point();
-						auto site2 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::cw(ec->second))->site().point();
+						auto site_1 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::ccw(ec->second))->site().point();
+						auto site_2 = ec->first->vertex(CGAL::Triangulation_cw_ccw_2::cw(ec->second))->site().point();
 
-						auto fuc = [&](K::Point_2 pt) {
-							return (pt.x() + 1) * (pt.x() + 1) + pt.y() * pt.y() - 2.25;
-						};*/
-
-						ag.draw_dual_edge(*ec, vor);
+						bool isLargeZero_1 = (sites[siteToIdx[site_1]].f_val > 0); // TODO; 等于0的情况
+						bool isLargeZero_2 = (sites[siteToIdx[site_2]].f_val > 0);
+						if (isLargeZero_1 ^ isLargeZero_2) ag.draw_dual_edge(*ec, vor);
 					} while (++ec != done);
 				}
 				//print the cropped Voronoi diagram edges as segments
