@@ -1,6 +1,7 @@
 ﻿#pragma once
 #include "geometry/PolyMesh.hpp"
 #include "core/ApolloniusGraphAdaptor.hpp"
+#include "core/PowerDiagramAdaptor.hpp"
 #include <functional>
 #include <unordered_set>
 
@@ -83,6 +84,8 @@ namespace core
 
 		ApolloniusGraphAdaptor agAdaptor;
 
+		PowerDiagramAdaptor pdAdaptor;
+
 		ScalarFunc scalarFunc; // 标量函数
 
 	public:
@@ -95,6 +98,7 @@ namespace core
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			agAdaptor = ApolloniusGraphAdaptor();
+			pdAdaptor = PowerDiagramAdaptor();
 		}
 
 		MSCuttingModel(const std::string& filename, int _numSamples) noexcept :
@@ -103,6 +107,7 @@ namespace core
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			agAdaptor = ApolloniusGraphAdaptor();
+			pdAdaptor = PowerDiagramAdaptor();
 		}
 
 		MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}

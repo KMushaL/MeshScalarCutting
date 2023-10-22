@@ -20,7 +20,7 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 int main()
 {
 	const std::string mesh_file(MODEL_DIR DELIMITER R"(square.obj)");
-	const static int numSamplePoints = 20;
+	const static int numSamplePoints = 10;
 
 	ScalarFunc scalarFunc = { val, grad };
 	core::MSCuttingModel mscModel(mesh_file, scalarFunc, numSamplePoints);
@@ -28,7 +28,8 @@ int main()
 
 	const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
 	mscModel.launch(ad_vis_file);
-
+	/*const std::string pd_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"power_diagram.obj");
+	mscModel.launch(pd_vis_file);*/
 
 	/*
 	unit_test::testMeshNorm(mesh_file);
