@@ -69,9 +69,28 @@ namespace geometry
 			constructMesh();
 		}
 
+		PolyMesh(const std::string& file, const bool is2Unifrom, const double _scaleFactor,
+			const std::string& norm_out_file) noexcept :boxScaleFactor(_scaleFactor) {
+			readMesh(file);
+
+			meshNorm(norm_out_file);
+
+			//if constexpr (isNormalized) meshNorm();
+
+			if (is2Unifrom) setBoundingBox<true>();
+			else setBoundingBox<false>();
+
+			modelBoundingBox.output(str_util::concatFilePath(VIS_DIR, modelName, (std::string)"modelBoundingBox.obj"));
+			LOG::qpInfo("Diagonal length of the bounding-box = ", diagonalLengthOfBBox);
+
+			constructMesh();
+		}
+
 		PolyMesh(const std::string& file, const bool is2Unifrom) noexcept :PolyMesh(file, is2Unifrom, 1) {}
 
 		explicit PolyMesh(const std::string& file) noexcept :PolyMesh(file, false, 1) {}
+
+		explicit PolyMesh(const std::string& file, const std::string& norm_out_file) noexcept :PolyMesh(file, false, 1, norm_out_file) {}
 
 		virtual ~PolyMesh() noexcept = default;
 
@@ -197,6 +216,8 @@ namespace geometry
 	public:
 		//template<typename = std::enable_if_t<isNormalized>>
 		void meshNorm();
+
+		void meshNorm(const std::string& out_file);
 
 	protected:
 		/* Methods for transforming the mesh */

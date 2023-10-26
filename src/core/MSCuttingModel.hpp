@@ -92,6 +92,15 @@ namespace core
 		/* Constructor and Destructor */
 		MSCuttingModel() noexcept = default;
 
+		MSCuttingModel(const std::string& filename, const std::string& norm_out_file, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
+			PolyMesh(filename, norm_out_file), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
+			samplePoints.reserve(_numSamples * numMeshEdges);
+			sampleFacets.resize(numMeshFaces, SampleFacet());
+
+			agAdaptor = ApolloniusGraphAdaptor();
+			pdAdaptor = PowerDiagramAdaptor();
+		}
+
 		MSCuttingModel(const std::string& filename, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
 			PolyMesh(filename), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
 			samplePoints.reserve(_numSamples * numMeshEdges);
@@ -129,6 +138,10 @@ namespace core
 			int& globalOutVertIdx,
 			std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
 			std::vector<std::pair<int, int>>& apolloniusDiagramLines);
+
+		static constexpr double PROJ_EPSILON = 1e-6;
+
+		std::vector<ApolloniusDiagramPoint_3> postProcessFacetPoints(int faceIdx, const std::vector<ApolloniusDiagramPoint_3>&);
 
 	private:
 		/* Methods for Our Algorithm */

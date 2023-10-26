@@ -497,8 +497,6 @@ namespace geometry
 		return zoomMatrix * transMatrix;
 	}
 
-	//template<bool isNormalized>
-	//template<typename>
 	inline void PolyMesh/*<isNormalized>*/::meshNorm()
 	{
 		auto transMat = calcTransformMatrix();
@@ -508,6 +506,21 @@ namespace geometry
 			vertMat.row(i) += transMat.block(3, 0, 1, 3);
 			vertMat.row(i) = vertMat.row(i) * transMat.block(0, 0, 3, 3);
 		}
+	}
+
+	//template<bool isNormalized>
+	//template<typename>
+	inline void PolyMesh/*<isNormalized>*/::meshNorm(const std::string& out_file)
+	{
+		auto transMat = calcTransformMatrix();
+#pragma omp parallel for
+		for (int i = 0; i < numMeshVerts; ++i)
+		{
+			vertMat.row(i) += transMat.block(3, 0, 1, 3);
+			vertMat.row(i) = vertMat.row(i) * transMat.block(0, 0, 3, 3);
+		}
+
+		writeToOBJ(out_file);
 	}
 
 	//template<bool isNormalized>
@@ -771,6 +784,8 @@ namespace geometry
 
 	inline void PolyMesh::writeToOBJ(const std::string& out_file)
 	{
+		str_util::checkDir(out_file);
+
 		igl::writeOBJ(out_file, vertMat, faceMat);
 	}
 
