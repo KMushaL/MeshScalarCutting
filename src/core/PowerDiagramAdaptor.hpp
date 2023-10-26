@@ -93,7 +93,7 @@ namespace core
 					CGAL::Object obj = CGAL::intersection(ray_2, m_bbox);
 					s = CGAL::object_cast<Segment_2>(&obj);
 				}
-				else if (CGAL::object_cast<Segment_2>(&rsl)) 
+				else if (CGAL::object_cast<Segment_2>(&rsl))
 				{
 					s = CGAL::object_cast<Segment_2>(&rsl);
 				}

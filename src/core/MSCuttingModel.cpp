@@ -3,6 +3,7 @@
 #include "detail/Handler.hpp"
 #include <map>
 #include <fstream>
+#include <igl/AABB.h>
 
 NAMESPACE_BEGIN(mscut)
 namespace core
@@ -161,6 +162,95 @@ namespace core
 		return apolloniusDiagramLines.size();
 	}
 
+	/* Post-processing */
+	std::vector<MSCuttingModel::ApolloniusDiagramPoint_3>
+		MSCuttingModel::postProcessFacetPoints(const int faceIdx, const std::vector<ApolloniusDiagramPoint_3>& curFacetADPoints)
+	{
+		int numADPoints = curFacetADPoints.size();
+		std::vector<ApolloniusDiagramPoint_3> resPoints(numADPoints);
+
+		// aabb initialization
+		igl::AABB<MatrixX, 3> tri_aabb;
+		MatrixX singleTriV(3, 3);
+		const auto triVerts = this->getFaceVec()[faceIdx]->aroundVerts();
+		singleTriV << triVerts[0]->pos.transpose(),
+			triVerts[1]->pos.transpose(),
+			triVerts[2]->pos.transpose();
+		MatrixXi singleTriF(1, 3);
+		singleTriF << 0, 1, 2;
+		tri_aabb.init(singleTriV, singleTriF);
+
+		using VertIdx = std::pair<int, int>;
+		const std::array<VertIdx, 3> triEdges = {
+			VertIdx(0, 1),
+			VertIdx(1, 2),
+			VertIdx(2, 0)
+		};
+		const std::array<Vector3, 3> triEdgesDir = {
+			triVerts[1]->pos - triVerts[0]->pos,
+			triVerts[2]->pos - triVerts[1]->pos,
+			triVerts[0]->pos - triVerts[2]->pos
+		};
+
+#pragma omp parallel for
+		for (int i = 0; i < numADPoints; ++i) {
+			const ApolloniusDiagramPoint_3 originalADPoint = curFacetADPoints[i];
+
+			// 判断点是否在边上
+			int onEdgeIdx = -1;
+			for (int i = 0; i < 3; ++i) {
+				const Vector3 v1 = triVerts[triEdges[i].first]->pos;
+
+				if (onEdgeIdx == -1 && triEdgesDir[i].cross(originalADPoint - v1).norm() < 1e-9) { onEdgeIdx = i; break; }
+			}
+
+			VectorX tri_sqrD; VectorXi tri_I; MatrixX tri_C; MatrixX projQ(1, 3);
+
+			// for computing projection point
+			ApolloniusDiagramPoint_3 lastPoint = originalADPoint;
+			ApolloniusDiagramPoint_3 projPoint;
+			Scalar lastVal; Vector3 lastGrad; double alpha;
+
+			int iter = 0;
+			while (iter < 50) {
+				++iter;
+
+				lastVal = scalarFunc.val(lastPoint);
+				lastGrad = scalarFunc.grad(lastPoint);
+
+				alpha = -lastVal / (lastGrad.squaredNorm() + 1e-6);
+
+				// project to triangle
+				if (onEdgeIdx == -1)
+				{
+					projPoint = alpha * lastGrad + lastPoint;
+
+					projQ.row(0) = projPoint;
+					tri_aabb.squared_distance(singleTriV, singleTriF, projQ, tri_sqrD, tri_I, tri_C);
+					projPoint = tri_C.row(0);
+				}
+				else
+				{
+					const Vector3 proj_grad = triEdgesDir[onEdgeIdx] * (alpha * lastGrad.dot(triEdgesDir[onEdgeIdx]) / (triEdgesDir[onEdgeIdx].norm()));
+					projPoint = proj_grad + lastPoint;
+				}
+
+				if ((projPoint - lastPoint).norm() < PROJ_EPSILON) break;
+				else lastPoint = projPoint;
+			};
+
+			resPoints[i] = projPoint;
+
+#pragma omp critical
+			{
+				if (i <= 20) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
+				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");
+			}
+		}
+
+		return resPoints;
+	}
+
 	/* Methods for Our Algorithm */
 	/**
 	* @brief: 对mesh每条边进行固定数量的采样
@@ -267,8 +357,10 @@ namespace core
 
 			computeApolloniusGraphForFacet(i, globalOutVertIdx, curFacetADPoints, curFacetADLines);
 
+			std::vector<ApolloniusDiagramPoint_3> projCurFacetADPoints = postProcessFacetPoints(i, curFacetADPoints);
+
 			// 输出Apollonius Diagram中的所有全局坐标点
-			for (const auto& adPoint : curFacetADPoints)
+			for (const auto& adPoint : projCurFacetADPoints)
 			{
 				out << "v " << adPoint.transpose() << std::endl;
 			}
