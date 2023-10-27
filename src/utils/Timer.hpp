@@ -1,20 +1,23 @@
-﻿#pragma once
+﻿//
+// Created by lei on 23-9-15.
+//
+#pragma once
 
 #include <iostream>
 
-#if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
+#if defined(WIN32) || defined(_WIN32)
 #define WINDOWS_LEAN_AND_MEAN
 #include <windows.h>
 #undef min
 #undef max
-#else
+#elif defined(__linux__)
+
 #include <sys/time.h>
 #include <ctime>
+
 #endif // WIN32
 
-namespace timer
-{
-#if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
+namespace timer {
 	class TimerInterface {
 	public:
 		TimerInterface() = default;
@@ -44,6 +47,7 @@ namespace timer
 		virtual double getAverageTime() = 0;
 	};
 
+#if defined(WIN32) || defined(_WIN32)
 	class WinTimer : public TimerInterface
 	{
 	public:
@@ -166,7 +170,8 @@ namespace timer
 		return (sessions > 0) ? (total_time / sessions) : 0.0;
 	}
 
-#else
+#elif defined(__linux__)
+
 	class LinuxTimer : public TimerInterface {
 	public:
 		LinuxTimer() : start_time(),
@@ -335,4 +340,5 @@ namespace timer
 			return 0.0;
 		}
 	}
-}// namespace timer
+
+} // namespace timer
