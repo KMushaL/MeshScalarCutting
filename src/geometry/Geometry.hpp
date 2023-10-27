@@ -131,7 +131,8 @@ namespace geometry::gvis
 		//faceBegIdx += 8;
 	}
 
-	inline void writePointCloud(const std::vector<Vector3>& points, std::ofstream& output)
+	template<typename T>
+	inline void writePointCloud(const std::vector<T>& points, std::ofstream& output)
 	{
 		for (size_t i = 0; i < points.size(); ++i)
 			write_vertex(output, points[i]);
