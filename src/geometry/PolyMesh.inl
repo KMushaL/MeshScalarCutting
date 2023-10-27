@@ -3,7 +3,8 @@
 //
 #pragma once
 #include "PolyMesh.hpp"
-#include "utils/Common.hpp"
+#include "utils/Log.hpp"
+#include "utils/Donut.hpp"
 #include <omp.h>
 #include <igl/read_triangle_mesh.h>
 #include <igl/writeOBJ.h>
@@ -776,7 +777,7 @@ namespace geometry
 		// TODO: replace with a reader for any polygonal mesh
 		igl::read_triangle_mesh(in_file, vertMat, faceMat);
 
-		modelName = str_util::getFileName(DELIMITER, in_file);
+		modelName = str_util::getFileName(in_file);
 
 		numMeshVerts = vertMat.rows();
 		numMeshFaces = faceMat.rows();

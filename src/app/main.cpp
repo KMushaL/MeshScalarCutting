@@ -1,4 +1,5 @@
 ﻿#include <iostream>
+#include <CLI/CLI.hpp>
 #include "utils/String.hpp"
 #include "core/test/CoreTest.hpp"
 #include "geometry/test/GeoTest.hpp"
@@ -17,22 +18,44 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 	return 2 * Eigen::Vector3d((p.x() + 1), p.y(), p.z());
 }
 
-int main()
+int main(int argc, char** argv)
 {
-	const std::string mesh_file(MODEL_DIR DELIMITER R"(bunny.obj)");
-	const std::string modelName = str_util::getFileName("\\", mesh_file);
-	const static int numSamplePoints = 5;
+	// parse input arguments
+	CLI::App app("Mesh Scalar Cutting");
+	//app.add_flag("-h,--help", "Print configuration and exit.");
 
-	const std::string norm_mesh_file(str_util::concatFilePath(VIS_DIR, modelName, modelName + (std::string)"_norm.obj"));
-	ScalarFunc scalarFunc = { val, grad };
-	core::MSCuttingModel mscModel(mesh_file, norm_mesh_file, scalarFunc, numSamplePoints);
+	std::string modelArg = "bunny.off";
+	app.add_option("-f,--file", modelArg,
+		"Input model's name with extension.");
 
-	/*const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
-	mscModel.launch(ad_vis_file);*/
-	const std::string pd_vis_file = str_util::concatFilePath(
-		VIS_DIR, mscModel.modelName, (std::string)"power_diagram_" + std::to_string(numSamplePoints) + (std::string)".obj"
-	);
-	mscModel.launch(pd_vis_file);
+	int numSamplePoints = 5;
+	app.add_option("-n,--number", numSamplePoints,
+		"Specify the number of sample points at each edge of input model.");
+
+	try {
+		argv = app.ensure_utf8(argv);
+		app.parse(argc, argv);
+	}
+	catch (const CLI::ParseError& e) {
+		// 输出帮助信息
+		return app.exit(e);
+	}
+	std::cout << "modelArg = " << modelArg << std::endl;
+	printf("numSamplePoints = %d\n", numSamplePoints);
+
+	//const std::string mesh_file(MODEL_DIR + R"(\)" + modelArg);
+	//const std::string modelName = str_util::getFileName(mesh_file);
+
+	//const std::string norm_mesh_file(str_util::concatFilePath(VIS_DIR, modelName, modelName + "_norm.obj"));
+	//ScalarFunc scalarFunc = { val, grad };
+	//core::MSCuttingModel mscModel(mesh_file, norm_mesh_file, scalarFunc, numSamplePoints);
+
+	///*const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
+	//mscModel.launch(ad_vis_file);*/
+	//const std::string pd_vis_file = str_util::concatFilePath(
+	//	VIS_DIR, mscModel.modelName, "power_diagram_" + std::to_string(numSamplePoints) + ".obj"
+	//);
+	//mscModel.launch(pd_vis_file);
 
 	/*
 	unit_test::testMeshNorm(mesh_file);

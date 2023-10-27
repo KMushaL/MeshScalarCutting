@@ -1,7 +1,7 @@
 ﻿#pragma once
 #include "Config.hpp"
+#include "utils/Log.hpp"
 #include "utils/String.hpp"
-#include "utils/Common.hpp"
 #include "detail/BasicDataType.hpp"
 #include <string>
 #include <iomanip>
