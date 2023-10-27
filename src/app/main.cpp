@@ -20,28 +20,28 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 
 int main(int argc, char** argv)
 {
-	// parse input arguments
-	CLI::App app("Mesh Scalar Cutting");
-	//app.add_flag("-h,--help", "Print configuration and exit.");
-
-	std::string modelArg = "bunny.off";
-	app.add_option("-f,--file", modelArg,
-		"Input model's name with extension.");
-
-	int numSamplePoints = 5;
-	app.add_option("-n,--number", numSamplePoints,
-		"Specify the number of sample points at each edge of input model.");
-
-	try {
-		argv = app.ensure_utf8(argv);
-		app.parse(argc, argv);
-	}
-	catch (const CLI::ParseError& e) {
-		// 输出帮助信息
-		return app.exit(e);
-	}
-	std::cout << "modelArg = " << modelArg << std::endl;
-	printf("numSamplePoints = %d\n", numSamplePoints);
+	//// parse input arguments
+	//CLI::App app("Mesh Scalar Cutting");
+	////app.add_flag("-h,--help", "Print configuration and exit.");
+	//
+	//std::string modelArg = "bunny.off";
+	//app.add_option("-f,--file", modelArg,
+	//	"Input model's name with extension.");
+	//
+	//int numSamplePoints = 5;
+	//app.add_option("-n,--number", numSamplePoints,
+	//	"Specify the number of sample points at each edge of input model.");
+	//
+	//try {
+	//	argv = app.ensure_utf8(argv);
+	//	app.parse(argc, argv);
+	//}
+	//catch (const CLI::ParseError& e) {
+	//	// 输出帮助信息
+	//	return app.exit(e);
+	//}
+	//std::cout << "modelArg = " << modelArg << std::endl;
+	//printf("numSamplePoints = %d\n", numSamplePoints);
 
 	//const std::string mesh_file(MODEL_DIR + R"(\)" + modelArg);
 	//const std::string modelName = str_util::getFileName(mesh_file);
@@ -57,8 +57,8 @@ int main(int argc, char** argv)
 	//);
 	//mscModel.launch(pd_vis_file);
 
-	/*
-	unit_test::testMeshNorm(mesh_file);
+
+	/*unit_test::testMeshNorm(mesh_file);
 
 	ScalarFunc scalarFunc = { val, grad };
 	unit_test::testSamplingPoint(mesh_file, scalarFunc, 2);
@@ -66,6 +66,7 @@ int main(int argc, char** argv)
 	unit_test::testLocalGlobalTransoform(mesh_file, numSamplePoints);
 
 	unit_test::testComputeAD(mesh_file, numSamplePoints);*/
+	unit_test::testComputeCDT();
 
 	return 0;
 }

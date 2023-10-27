@@ -17,7 +17,7 @@ namespace unit_test
 		}
 		MSCuttingModel mscModel(mesh_file, numSamples);
 
-		const std::string vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"apollonius_diagram.obj");
+		const std::string vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, "apollonius_diagram.obj");
 		str_util::checkDir(vis_file);
 		std::ofstream vis_out(vis_file);
 		if (!vis_out) { LOG::qpError("I/O: File ", vis_file.c_str(), " could not be opened!"); return false; }
