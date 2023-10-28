@@ -17,43 +17,42 @@
 #include <CGAL/Delaunay_triangulation_2.h>
 #include <iterator>
 
-// typedefs for the traits and the algorithm
-struct FaceInfo_2
-{
-	FaceInfo_2() noexcept = default;
-
-	int level;
-	bool isInDomain()
-	{
-		return level % 2 == 1; // 非边界面
-	}
-};
-typedef  CGAL::Exact_predicates_inexact_constructions_kernel                        CDT_Kernel;
-typedef  CGAL::Triangulation_vertex_base_2<CDT_Kernel>                              CDT_Vb;
-typedef  CGAL::Triangulation_face_base_with_info_2<FaceInfo_2, CDT_Kernel>          CDT_Fbb;
-typedef  CGAL::Constrained_triangulation_face_base_2<CDT_Kernel, CDT_Fbb>           CDT_Fb;
-typedef  CGAL::Triangulation_data_structure_2<CDT_Vb, CDT_Fb>                       CDT_TDS;
-typedef  CGAL::Exact_predicates_tag                                                 CDT_Itag;
-typedef  CGAL::Constrained_Delaunay_triangulation_2<CDT_Kernel, CDT_TDS, CDT_Itag>  CDT;
-typedef  CDT::Point																    Point_2;
-typedef  CDT::Edge																    Edge;
-typedef  CDT::Face_handle														    Face_handle;
-typedef  CDT_Kernel::Segment_2														Segment_2;
-typedef  CGAL::Triangle_2<CDT_Kernel>												Triangle_2;
-
-
 NAMESPACE_BEGIN(mscut)
 namespace core
 {
 	class CDTAdaptor
 	{
 	public:
+		// typedefs for the traits and the algorithm
+		struct FaceInfo_2
+		{
+			FaceInfo_2() noexcept = default;
+
+			int level;
+			bool isInDomain() {
+				return level % 2 == 1; // 非边界面 }
+			};
+		};
+		typedef  CGAL::Exact_predicates_inexact_constructions_kernel                        CDT_Kernel;
+		typedef  CGAL::Triangulation_vertex_base_2<CDT_Kernel>                              CDT_Vb;
+		typedef  CGAL::Triangulation_face_base_with_info_2<FaceInfo_2, CDT_Kernel>          CDT_Fbb;
+		typedef  CGAL::Constrained_triangulation_face_base_2<CDT_Kernel, CDT_Fbb>           CDT_Fb;
+		typedef  CGAL::Triangulation_data_structure_2<CDT_Vb, CDT_Fb>                       CDT_TDS;
+		typedef  CGAL::Exact_predicates_tag                                                 CDT_Itag;
+		typedef  CGAL::Constrained_Delaunay_triangulation_2<CDT_Kernel, CDT_TDS, CDT_Itag>  CDT;
+		typedef  CDT::Point																    Point_2;
+		typedef  CDT::Edge																    Edge;
+		typedef  CDT::Face_handle														    Face_handle;
+		typedef  CDT_Kernel::Segment_2														Segment_2;
+		typedef  CGAL::Triangle_2<CDT_Kernel>												Triangle_2;
+
 		/* Member type */
 		using BoundaryPoint = Point_2;
 		using BoundaryEdge = Segment_2;
 
 		using CDTPoint = typename BoundaryPoint;
 		using CDTEdge = typename BoundaryEdge;
+		using CDTriangle = Triangle_2;
 
 	private:
 		/* Data */
@@ -118,13 +117,13 @@ namespace core
 
 	public:
 		template<class BD>
-		std::vector<Triangle_2> computeCDForBoundary(const BD& boundary)
+		std::vector<CDTriangle> computeCDForBoundary(const BD& boundary)
 		{
 			static_assert(std::is_same_v<typename BD::_Point, BoundaryPoint>, "TYPE_OF_BOUNDARY_POINT_FOR_CDT_MUST_BE_Point_2");
 			static_assert(std::is_same_v<typename BD::_Edge, BoundaryEdge>, "TYPE_OF_BOUNDARY_EDGE_FOR_CDT_MUST_BE_Segment_2");
 
 			cdt.clear();
-			std::vector<Triangle_2> cdt_results; // 保存最后的结果
+			std::vector<CDTriangle> cdt_results; // 保存最后的结果
 
 			// insert constrained points
 			// make sure the boundary performs a closed-form behavior
@@ -142,7 +141,7 @@ namespace core
 					CDTPoint b = f->vertex(1)->point();
 					CDTPoint c = f->vertex(2)->point();
 
-					Triangle_2 tri_2(a, b, c);
+					CDTriangle tri_2(a, b, c);
 
 					cdt_results.emplace_back(tri_2);
 				}
