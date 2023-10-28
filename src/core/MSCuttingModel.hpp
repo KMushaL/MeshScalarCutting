@@ -2,6 +2,7 @@
 #include "geometry/PolyMesh.hpp"
 #include "core/ApolloniusGraphAdaptor.hpp"
 #include "core/PowerDiagramAdaptor.hpp"
+#include "core/CDTAdaptor.hpp"
 #include <functional>
 #include <unordered_set>
 
@@ -18,6 +19,11 @@ namespace core
 	{
 	public:
 		/* Member type */
+		using Point_2 = typename PowerDiagramAdaptor::Point_2;
+		using Point_3 = typename PowerDiagramAdaptor::Point_3;
+		using Segment_2 = typename PowerDiagramAdaptor::Segment_2;
+		using Segment_3 = typename PowerDiagramAdaptor::Segment_3;
+		using Polygon_2 = typename PowerDiagramAdaptor::Polygon_2;
 		/*
 			因为我们只有在调用Apollonius时用到了CGAL，为了方便起见，
 			三维下的点仍用Eigen的Data type，二维下的点使用CGAL的Point_2
@@ -26,12 +32,20 @@ namespace core
 		using ApolloniusDiagramLine_2 = typename ApolloniusGraphAdaptor::ApolloniusDiagramLine_2;
 		using ApolloniusDiagramPoint_3 = Eigen::Vector3d;
 		using ApolloniusDiagramLine_3 = std::pair<ApolloniusDiagramPoint_3, ApolloniusDiagramPoint_3>;
+		using CDTriangle = typename CDTAdaptor::CDTriangle;
+
 		using ScalarValFunc = std::function<Scalar(const ApolloniusDiagramPoint_3&)>;
 		using GradFunc = std::function<Eigen::Vector3d(const ApolloniusDiagramPoint_3&)>;
 
 		struct ScalarFunc {
 			ScalarValFunc val;
 			GradFunc grad;
+		};
+
+		enum class VERT_TYPE {
+			INSIDE,
+			OUTSIDE,
+			EQUAL
 		};
 
 		/* 采样点定义 */
@@ -71,9 +85,23 @@ namespace core
 				:aroundSamplePoints(_aroundSamplePoints), sites(_sites) {}
 		};
 
+		/* 计算CDT时所传入的constrained cell定义 */
+		struct CDT_Cell {
+			using _Point = Point_3;
+			using _Edge = Segment_3;
+
+			std::vector<_Point> bdPoints;
+			std::vector<_Edge> bdEdges;
+
+			CDT_Cell() noexcept = default;
+			CDT_Cell(const std::vector<_Edge>& _bdEdges) :bdEdges(_bdEdges) {}
+		};
+
 	private:
 		/* Data */
 		int numSamplesPerEdge;  // 每条边固定的采样数量 TODO：后期不可能固定
+
+		std::vector<VERT_TYPE> meshVertsType;
 
 		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
 
@@ -86,6 +114,8 @@ namespace core
 
 		PowerDiagramAdaptor pdAdaptor;
 
+		CDTAdaptor cdtAdaptor;
+
 		ScalarFunc scalarFunc; // 标量函数
 
 	public:
@@ -97,6 +127,8 @@ namespace core
 			samplePoints.reserve(_numSamples * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
+			meshVertsType.resize(numMeshVerts);
+
 			agAdaptor = ApolloniusGraphAdaptor();
 			pdAdaptor = PowerDiagramAdaptor();
 		}
@@ -106,6 +138,8 @@ namespace core
 			samplePoints.reserve(_numSamples * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
+			meshVertsType.resize(numMeshVerts);
+
 			agAdaptor = ApolloniusGraphAdaptor();
 			pdAdaptor = PowerDiagramAdaptor();
 		}
@@ -114,6 +148,8 @@ namespace core
 			PolyMesh(filename), numSamplesPerEdge(_numSamples) {
 			samplePoints.reserve(_numSamples * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
+
+			meshVertsType.resize(numMeshVerts);
 
 			agAdaptor = ApolloniusGraphAdaptor();
 			pdAdaptor = PowerDiagramAdaptor();
@@ -137,11 +173,22 @@ namespace core
 		int computeApolloniusGraphForFacet(int facetIdx,
 			int& globalOutVertIdx,
 			std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
-			std::vector<std::pair<int, int>>& apolloniusDiagramLines);
+			std::vector<std::pair<int, int>>& apolloniusDiagramLines,
+			std::unordered_map<int, std::vector<int>>& edgeTable);
 
 		static constexpr double PROJ_EPSILON = 1e-6;
+		std::vector<ApolloniusDiagramPoint_3> postProcessFacetPoints(int faceIdx,
+			const std::vector<ApolloniusDiagramPoint_3>&,
+			std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
+			std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>&);
 
-		std::vector<ApolloniusDiagramPoint_3> postProcessFacetPoints(int faceIdx, const std::vector<ApolloniusDiagramPoint_3>&);
+		using CellTriangle = std::vector<CDTriangle>;
+		std::vector<CellTriangle> computeCDTForFacet(int faceIdx,
+			const std::vector<ApolloniusDiagramPoint_3>&,
+			//const std::vector<std::pair<int, int>>&,
+			const std::unordered_map<int, std::vector<int>>&,
+			const std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
+			const std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>&);
 
 	private:
 		/* Methods for Our Algorithm */

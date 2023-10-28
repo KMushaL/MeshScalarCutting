@@ -15,25 +15,8 @@
 #include <CGAL/Delaunay_triangulation_2.h>
 #include <iterator>
 #include <CGAL/enum.h>
-
-// typedefs for the traits and the algorithm
-typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-typedef CGAL::Polygon_2<K>                                  Polygon_2;
-typedef CGAL::Triangle_2<K>									Triangle_2;
-typedef CGAL::Bbox_2										Bbox_2;
-typedef K::Point_2											Point_2;
-typedef K::Point_3											Point_3;
-typedef K::Vector_2											Vector_2;
-typedef K::Vector_3											Vector_3;
-typedef K::Iso_rectangle_2									Iso_rectangle_2;
-typedef K::Segment_2										Segment_2;
-typedef K::Ray_2											Ray_2;
-typedef K::Line_2											Line_2;
-
 #include <CGAL/Regular_triangulation_2.h>
 #include <CGAL/Weighted_point_2.h>
-typedef CGAL::Regular_triangulation_2<K>					Regular_triangulation;
-typedef K::Weighted_point_2									Wp_2;
 
 NAMESPACE_BEGIN(mscut)
 namespace core
@@ -41,6 +24,24 @@ namespace core
 	class PowerDiagramAdaptor
 	{
 	public:
+		// typedefs for the traits and the algorithm
+		typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
+		typedef CGAL::Polygon_2<K>                                  Polygon_2;
+		typedef CGAL::Triangle_2<K>									Triangle_2;
+		typedef CGAL::Bbox_2										Bbox_2;
+		typedef K::Point_2											Point_2;
+		typedef K::Point_3											Point_3;
+		typedef K::Vector_2											Vector_2;
+		typedef K::Vector_3											Vector_3;
+		typedef K::Iso_rectangle_2									Iso_rectangle_2;
+		typedef K::Segment_2										Segment_2;
+		typedef K::Segment_3										Segment_3;
+		typedef K::Ray_2											Ray_2;
+		typedef K::Line_2											Line_2;
+
+		typedef CGAL::Regular_triangulation_2<K>					Regular_triangulation;
+		typedef K::Weighted_point_2									Wp_2;
+
 		/* Member type */
 		using PowerDiagramPoint_2 = Point_2;
 		using PowerDiagramLine_2 = Segment_2;
@@ -98,6 +99,7 @@ namespace core
 					s = CGAL::object_cast<Segment_2>(&rsl);
 				}
 				else return;
+
 				// 再与boundary求交
 				if (s && isValidSeg(*s))
 				{

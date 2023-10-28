@@ -16,25 +16,8 @@
 #include <iterator>
 #include <CGAL/enum.h>
 
-typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
-typedef CGAL::Polygon_2<K>                                  Polygon_2;
-typedef CGAL::Triangle_2<K>									Triangle_2;
-typedef CGAL::Bbox_2										Bbox_2;
-typedef K::Point_2											Point_2;
-typedef K::Point_3											Point_3;
-typedef K::Vector_2											Vector_2;
-typedef K::Vector_3											Vector_3;
-typedef K::Iso_rectangle_2									Iso_rectangle_2;
-typedef K::Segment_2										Segment_2;
-typedef K::Ray_2											Ray_2;
-typedef K::Line_2											Line_2;
-
 #include <CGAL/Apollonius_graph_2.h>
 #include <CGAL/Apollonius_graph_traits_2.h>
-
-// typedefs for the traits and the algorithm
-typedef CGAL::Apollonius_graph_traits_2<K>   Traits;
-typedef CGAL::Apollonius_graph_2<Traits>     Apollonius_graph;
 
 NAMESPACE_BEGIN(mscut)
 namespace core
@@ -42,6 +25,23 @@ namespace core
 	class ApolloniusGraphAdaptor
 	{
 	public:
+		typedef CGAL::Exact_predicates_inexact_constructions_kernel K;
+		typedef CGAL::Polygon_2<K>                                  Polygon_2;
+		typedef CGAL::Triangle_2<K>									Triangle_2;
+		typedef CGAL::Bbox_2										Bbox_2;
+		typedef K::Point_2											Point_2;
+		typedef K::Point_3											Point_3;
+		typedef K::Vector_2											Vector_2;
+		typedef K::Vector_3											Vector_3;
+		typedef K::Iso_rectangle_2									Iso_rectangle_2;
+		typedef K::Segment_2										Segment_2;
+		typedef K::Ray_2											Ray_2;
+		typedef K::Line_2											Line_2;
+
+		// typedefs for the traits and the algorithm
+		typedef CGAL::Apollonius_graph_traits_2<K>					Traits;
+		typedef CGAL::Apollonius_graph_2<Traits>					Apollonius_graph;
+
 		/* Member type */
 		using ApolloniusDiagramPoint_2 = Point_2;
 		using ApolloniusDiagramLine_2 = Segment_2;

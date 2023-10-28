@@ -71,3 +71,17 @@ namespace detail
 	using ArrayXX = typename Eigen::Array<_Scalar, Rows, Cols>;
 }
 NAMESPACE_END(mscut)
+
+template <>
+struct std::less<typename mscut::detail::Vector3> {
+public:
+	bool operator()(const typename mscut::detail::Vector3& a, const typename mscut::detail::Vector3& b) const {
+		for (size_t i = 0; i < a.size(); ++i) {
+			if (fabs(a[i] - b[i]) < 1e-20) continue;
+
+			if (a[i] < b[i]) return true;
+			else if (a[i] > b[i]) return false;
+		}
+		return false;
+	}
+};
