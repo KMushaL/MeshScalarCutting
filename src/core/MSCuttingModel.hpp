@@ -42,7 +42,7 @@ namespace core
 			GradFunc grad;
 		};
 
-		enum class VERT_TYPE {
+		enum class CELL_TYPE {
 			INSIDE,
 			OUTSIDE,
 			EQUAL
@@ -101,7 +101,7 @@ namespace core
 		/* Data */
 		int numSamplesPerEdge;  // 每条边固定的采样数量 TODO：后期不可能固定
 
-		std::vector<VERT_TYPE> meshVertsType;
+		std::vector<CELL_TYPE> meshVertsType;
 
 		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
 
@@ -117,6 +117,11 @@ namespace core
 		CDTAdaptor cdtAdaptor;
 
 		ScalarFunc scalarFunc; // 标量函数
+
+		using MeshComponent = geometry::MeshComponent<Scalar, Vector3>;
+		std::vector<MeshComponent> insideMesh;
+		std::vector<MeshComponent> outsideMesh;
+		int insideMeshVertIdx = 0, outsideMeshVertIdx = 0; // 用于控制内外mesh的输出点索引，注意是从0开始
 
 	public:
 		/* Constructor and Destructor */
@@ -171,7 +176,7 @@ namespace core
 		Eigen::Vector3d getGlobalCoordInFacet(int facetIdx, const ApolloniusDiagramPoint_2& point_2);
 
 		int computeApolloniusGraphForFacet(int facetIdx,
-			int& globalOutVertIdx,
+			int& globalOutVertIdx, // 用于控制等值线的输出索引值
 			std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
 			std::vector<std::pair<int, int>>& apolloniusDiagramLines,
 			std::unordered_map<int, std::vector<int>>& edgeTable);
@@ -180,15 +185,14 @@ namespace core
 		std::vector<ApolloniusDiagramPoint_3> postProcessFacetPoints(int faceIdx,
 			const std::vector<ApolloniusDiagramPoint_3>&,
 			std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
-			std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>&);
+			std::map<ApolloniusDiagramPoint_3, int>&);
 
 		using CellTriangle = std::vector<CDTriangle>;
 		std::vector<CellTriangle> computeCDTForFacet(int faceIdx,
 			const std::vector<ApolloniusDiagramPoint_3>&,
-			//const std::vector<std::pair<int, int>>&,
 			const std::unordered_map<int, std::vector<int>>&,
 			const std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
-			const std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>&);
+			const std::map<ApolloniusDiagramPoint_3, int>&);
 
 	private:
 		/* Methods for Our Algorithm */
@@ -198,11 +202,17 @@ namespace core
 
 	private:
 		/* Visualization */
+		void outputSamplePoints(std::ofstream& out);
+
 		void outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2);
+
+		void outputCutMesh(std::ofstream& out_1, std::ofstream& out_2);
 
 	public:
 		/* API for user */
-		bool launch(const std::string& ad_vis_file); // 传递的ad_vis_file是最后计算结果保存的文件位置
+		bool launch(const std::string& ad_vis_file,
+			const std::string& insideMeshVisFile,
+			const std::string& outsideMeshVisFile); // 分别传递的等值线的保存位置以及切割后的内外mesh保存位置
 
 	public:
 		/* Test APIs for us */
