@@ -266,6 +266,14 @@ namespace geometry
 		typedef std::array<Point, 4> Tetrahedron;
 		typedef std::array<int, 4>   TetNeighbor;
 	};
+
+	template <typename Real = Scalar, class T = Vector<Real, 3>>
+	struct MeshComponent {
+		std::vector<T> pointVec;
+		std::vector<int> pointIdxVec;
+
+		MeshComponent(const std::vector<T>& _pointVec, const std::vector<int>& _pointIdxVec) :pointVec(_pointVec), pointIdxVec(_pointIdxVec) {}
+	};
 } // namespace geometry
 
 NAMESPACE_END(mscut)

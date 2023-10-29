@@ -47,7 +47,7 @@ namespace core
 
 			site.pos = endVert_dim2;
 
-			meshVertsType[aroundEndVerts[i]->index] = (VERT_TYPE)(scalarFunc.val(endVert_dim3) > 0);
+			meshVertsType[aroundEndVerts[i]->index] = (CELL_TYPE)(scalarFunc.val(endVert_dim3) > 0); // TODO: 等于0时的数值误差处理
 
 			/*site.weight = -scalarFunc.val(endVert_dim3) / scalarFunc.grad(endVert_dim3).norm();
 			curSampleFacet.sites.emplace_back(site);*/
@@ -72,7 +72,7 @@ namespace core
 			site.f_val = f_val;
 			/*site.weight = abs(-f_val / f_grad.norm()) * 0.9*/;
 			double _weight = f_val / f_grad.norm();
-			site.weight = _weight * _weight * 1.1;
+			site.weight = _weight * _weight/* * 1.1*/;
 
 			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
 
@@ -133,6 +133,28 @@ namespace core
 		//auto adLineSegmentList = agAdaptor.computeAGForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
 		auto adLineSegmentList = pdAdaptor.computePDForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
 
+		if (adLineSegmentList.empty())
+		{
+			const auto& aroundVerts = this->getFaceVec()[facetIdx]->aroundVerts();
+			std::vector<Vector3> verts; std::vector<int> vertIdx;
+			CELL_TYPE type = meshVertsType[aroundVerts[0]->index];
+			int meshVertIdx = (type == CELL_TYPE::INSIDE) ? insideMeshVertIdx : outsideMeshVertIdx;
+			for (int i = 0; i < 3; ++i)
+			{
+				verts.emplace_back(aroundVerts[i]->pos);
+				vertIdx.emplace_back(meshVertIdx + i);
+			}
+			/*for (auto it = aroundVerts.begin(); it != aroundVerts.end(); ++it)
+			{
+				verts.emplace_back((*it)->pos);
+				vertIdx.emplace_back(meshVertIdx + it - aroundVerts.begin());
+			}*/
+			if (type == CELL_TYPE::INSIDE) insideMeshVertIdx += verts.size(), insideMesh.emplace_back(verts, vertIdx);
+			else if (type == CELL_TYPE::OUTSIDE) outsideMeshVertIdx += verts.size(), outsideMesh.emplace_back(verts, vertIdx);
+
+			return 0;
+		}
+
 		// 遍历每条边，转回全局坐标
 		for (const auto& lineSegemnt : adLineSegmentList)
 		{
@@ -177,7 +199,7 @@ namespace core
 		MSCuttingModel::postProcessFacetPoints(const int faceIdx,
 			const std::vector<ApolloniusDiagramPoint_3>& curFacetADPoints,
 			std::array<std::vector<ApolloniusDiagramPoint_3>, 3>& edgePoints,
-			std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>& edgePointToIdx)
+			std::map<ApolloniusDiagramPoint_3, int>& edgePointToIdx)
 	{
 		int numADPoints = curFacetADPoints.size();
 		std::vector<ApolloniusDiagramPoint_3> resPoints;
@@ -200,9 +222,9 @@ namespace core
 			VertIdx(2, 0)
 		};
 		const std::array<Vector3, 3> triEdgesDir = {
-			triVerts[1]->pos - triVerts[0]->pos,
-			triVerts[2]->pos - triVerts[1]->pos,
-			triVerts[0]->pos - triVerts[2]->pos
+			(triVerts[1]->pos - triVerts[0]->pos).normalized(),
+			(triVerts[2]->pos - triVerts[1]->pos).normalized(),
+			(triVerts[0]->pos - triVerts[2]->pos).normalized()
 		};
 
 #pragma omp parallel for
@@ -214,7 +236,8 @@ namespace core
 			for (int i = 0; i < 3; ++i) {
 				const Vector3 v1 = triVerts[triEdges[i].first]->pos;
 
-				if (onEdgeIdx == -1 && triEdgesDir[i].cross(originalADPoint - v1).norm() < 1e-9) { onEdgeIdx = i; break; }
+				// TODO: Exact Predicates
+				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalADPoint - v1).normalized()).norm() < 1e-9) { onEdgeIdx = i; break; }
 			}
 
 			VectorX tri_sqrD; VectorXi tri_I; MatrixX tri_C; MatrixX projQ(1, 3);
@@ -260,13 +283,16 @@ namespace core
 				// 目前对后处理后的所有点做了一个去重工作
 				if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
 				{
-					edgePointToIdx[projPoint] = std::make_pair(onEdgeIdx, i); // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
 					resPoints.emplace_back(projPoint);
-					if (onEdgeIdx != -1) edgePoints[onEdgeIdx].emplace_back(projPoint);
+					if (onEdgeIdx != -1)
+					{
+						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
+						edgePoints[onEdgeIdx].emplace_back(projPoint);
+					}
 				}
 
-				if (i <= 20) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
-				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");
+				/*if (i <= 50) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
+				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");*/
 			}
 		}
 
@@ -294,39 +320,46 @@ namespace core
 	std::vector<typename MSCuttingModel::CellTriangle>
 		MSCuttingModel::computeCDTForFacet(const int faceIdx,
 			const std::vector<ApolloniusDiagramPoint_3>& isoLineVerts,
-			//const std::vector<std::pair<int, int>>& isoLineVertIdx,
 			const std::unordered_map<int, std::vector<int>>& edgeTable,
 			const std::array<std::vector<ApolloniusDiagramPoint_3>, 3>& isoEdgePoints,
-			const std::map<ApolloniusDiagramPoint_3, std::pair<int, int>>& isoEdgePointToIdx)
+			const std::map<ApolloniusDiagramPoint_3, int>& isoEdgePointToIdx)
 	{
+
 		// 1. 搜寻边界边并确定区域
 		// 1.1 按逆时针将所有边上的点(包括面的端点)按逆时针排序
-		//std::queue<int> edgeCCWPointsIdxQueue;
-
+		/*std::queue<int> edgeCCWPointsIdxQueue;
+		std::vector<ApolloniusDiagramPoint_3> edgeCCWPoints;*/
 		using VertIdxPair = std::pair<int, int>;
 		std::queue<VertIdxPair> bdSegQueue;
 		std::set<VertIdxPair> isVisSeg;
 
-		//std::vector<ApolloniusDiagramPoint_3> edgeCCWPoints;
-
-		// Initialize cycle points
+		// Initialize cycle(counter clock-wise) points
 		struct EdgePointWithType {
 			ApolloniusDiagramPoint_3 pos;
-			VERT_TYPE type = VERT_TYPE::EQUAL;
+			CELL_TYPE type = CELL_TYPE::EQUAL;
 
 			EdgePointWithType(const ApolloniusDiagramPoint_3& _pos) :pos(_pos) {}
-			EdgePointWithType(const ApolloniusDiagramPoint_3& _pos, const VERT_TYPE& _type) :pos(_pos), type(_type) {}
+			EdgePointWithType(const ApolloniusDiagramPoint_3& _pos, const CELL_TYPE& _type) :pos(_pos), type(_type) {}
 		};
 		std::vector<EdgePointWithType> edgePWTVec;
 
-		// TODO: 目前没有对edgeCyclePoints做一个去重工作，也就是说有可能三角形端点和等值线上的边界点几乎是一个点
+		// TODO: 目前没有对edgeCyclePoints做一个去重工作，也就是说即使三角形端点和等值线上的边界点几乎是一个点但目前也认为是两个点
+		int prefixSum = 0; std::map<ApolloniusDiagramPoint_3, int> isoEdgePointToPWTIdx; // 存储等值线的边界点到edgePWTVec中的索引
 		const auto& triVerts = this->getFaceVec()[faceIdx]->aroundVerts();
-		edgePWTVec.emplace_back(EdgePointWithType(triVerts[0]->pos, meshVertsType[triVerts[0]->index]));
-		for (int i = 0; i < isoEdgePoints[0].size(); ++i) edgePWTVec.emplace_back(EdgePointWithType(isoEdgePoints[0][i]));
-		edgePWTVec.emplace_back(EdgePointWithType(triVerts[1]->pos, meshVertsType[triVerts[1]->index]));
-		for (int i = 0; i < isoEdgePoints[1].size(); ++i) edgePWTVec.emplace_back(EdgePointWithType(isoEdgePoints[1][i]));
-		edgePWTVec.emplace_back(EdgePointWithType(triVerts[2]->pos, meshVertsType[triVerts[2]->index]));
-		for (int i = 0; i < isoEdgePoints[2].size(); ++i) edgePWTVec.emplace_back(EdgePointWithType(isoEdgePoints[2][i]));
+		auto initCCWEdgePointData = [&](int triVertIdx) {
+			edgePWTVec.emplace_back(triVerts[triVertIdx]->pos, meshVertsType[triVerts[triVertIdx]->index]);
+			int numIsoEdgePoints = isoEdgePoints[triVertIdx].size(); // 在第triVertIdx条边上的等值线点数量
+			for (int i = 0; i < numIsoEdgePoints; ++i)
+			{
+				const auto& isoEdgePoint = isoEdgePoints[triVertIdx][i];
+				edgePWTVec.emplace_back(isoEdgePoint);
+				isoEdgePointToPWTIdx[isoEdgePoint] = i + prefixSum + 1;
+			}
+			prefixSum += (numIsoEdgePoints + 1);
+			};
+		donut::Loop<int, 3>([&](int i) {
+			initCCWEdgePointData(i);
+			});
 
 		int numEdgeCCWPoints = edgePWTVec.size();
 		for (int i = 0; i < numEdgeCCWPoints; ++i)
@@ -335,82 +368,131 @@ namespace core
 			//edgeCCWPointsIdxQueue.push(i);
 		}
 
+		// 保存结果的vectors
 		std::vector<CellTriangle> facetAllCDTs;
-		std::vector<typename CDT_Cell::_Point> _bdPoints;
-		std::vector<typename CDT_Cell::_Edge> _bdEdges;
+		std::vector<typename CDT_Cell::_Point> constrainedPoints;
+		std::vector<typename CDT_Cell::_Edge> constrainedEdges;
+
+		// 添加constrained edge的helper function
+		auto addConstrainedEdge = [&constrainedEdges](const ApolloniusDiagramPoint_3& vert_1,
+			const ApolloniusDiagramPoint_3& vert_2) {
+				constrainedEdges.emplace_back(
+					Point_3(vert_1.x(), vert_1.y(), vert_1.z()),
+					Point_3(vert_2.x(), vert_2.y(), vert_2.z()));
+			};
+		// 完整走一段等值线的helper function
+		auto walkIsoLine = [&](int beg_isoVertTableIdx) {
+			ApolloniusDiagramPoint_3 end_isoVert;
+			int cur_isoVertTableIdx = beg_isoVertTableIdx;
+			std::unordered_set<int> isVisIsoVert;
+			do
+			{
+				isVisIsoVert.insert(cur_isoVertTableIdx);
+
+				const ApolloniusDiagramPoint_3 iso_vert_1 = isoLineVerts[cur_isoVertTableIdx];
+				for (const auto& idx : edgeTable.at(cur_isoVertTableIdx))
+					if (!isVisIsoVert.count(idx)) cur_isoVertTableIdx = idx;  // TODO: 我们希望等值线上的每个点只有一个邻接点
+				const ApolloniusDiagramPoint_3 iso_vert_2 = isoLineVerts[cur_isoVertTableIdx];
+				addConstrainedEdge(iso_vert_1, iso_vert_2); // push结果
+
+				end_isoVert = iso_vert_2;
+			} while (isoEdgePointToIdx.find(end_isoVert) == isoEdgePointToIdx.end()); // 直到等值线的某个点是边上的边界点为止
+			return end_isoVert;
+			};
+
+
 		while (!bdSegQueue.empty())
 		{
-			VertIdxPair fro_seg = bdSegQueue.front();
+			VertIdxPair fro_bdSeg = bdSegQueue.front();
 			bdSegQueue.pop();
-			if (isVisSeg.count(fro_seg)) continue;
-			isVisSeg.insert(fro_seg);
+			if (isVisSeg.count(fro_bdSeg)) continue;
+			isVisSeg.insert(fro_bdSeg);
 
 			// 1.2 Set boundary of current cell
-			_bdPoints.clear(); _bdEdges.clear();
+			/*constrainedPoints.clear(); */constrainedEdges.clear();
 
-			VERT_TYPE cellType = VERT_TYPE::EQUAL;
-			int beg_cellPointIdx = fro_seg.second;
-			int cur_cellPointIdx = beg_cellPointIdx; // 始终存储的是边界点的索引
+			CELL_TYPE cellType = CELL_TYPE::EQUAL;
+			std::unordered_set<int> cur_cellBDIsoVertIdxSet; // 存储当前cell所经历过的在边界上的等值线点，用于更新等值线的type
 
-			int last_cellIsoPointIdx = -1;
+			int beg_cellBDPointIdx = fro_bdSeg.second;
+			int cur_cellBDPointIdx = beg_cellBDPointIdx; // 始终存储的是边界点的索引，该索引为edgePWTVec这一vector中的索引
+
+			//int last_cellIsoPointIdx = -1; // 防止重复走一条等值线
 			do {
+				ApolloniusDiagramPoint_3 cur_cellBDPoint = edgePWTVec[cur_cellBDPointIdx].pos; // 存储当前cell正在处理的边界点
+
 				// 如果边界点是某段等值线上的点
-				ApolloniusDiagramPoint_3 curPoint = edgePWTVec[cur_cellPointIdx].pos;
-				if (isoEdgePointToIdx.find(curPoint) != isoEdgePointToIdx.end() &&
-					isoEdgePointToIdx.at(curPoint).first != last_cellIsoPointIdx)
+				if (isoEdgePointToIdx.count(cur_cellBDPoint)/* &&
+					isoEdgePointToIdx.at(curBDPoint).second != last_cellIsoPointIdx*/)
 				{
-					if (cellType == VERT_TYPE::EQUAL && edgePWTVec[cur_cellPointIdx].type != VERT_TYPE::EQUAL)
-					{
-						cellType = (VERT_TYPE)!int(edgePWTVec[cur_cellPointIdx].type);
-					}
+					// 设置当前cell所属的type
+					if (cellType == CELL_TYPE::EQUAL && edgePWTVec[cur_cellBDPointIdx].type != CELL_TYPE::EQUAL)
+						cellType = (CELL_TYPE)!int(edgePWTVec[cur_cellBDPointIdx].type);
 
-					// 让它走完一整段等值线
-					// 获得在edgeTable中的索引
-					int beg_isoVertTableIdx = isoEdgePointToIdx.at(curPoint).second;
-					int cur_isoVertTableIdx = beg_isoVertTableIdx;
-					do
-					{
-						const ApolloniusDiagramPoint_3 iso_vert_1 = isoLineVerts[cur_isoVertTableIdx];
-						cur_isoVertTableIdx = edgeTable.at(cur_isoVertTableIdx)[0];
-						const ApolloniusDiagramPoint_3 iso_vert_2 = isoLineVerts[cur_isoVertTableIdx];
-						_bdEdges.emplace_back(Segment_3(
-							Point_3(iso_vert_1.x(), iso_vert_1.y(), iso_vert_1.z()),
-							Point_3(iso_vert_2.x(), iso_vert_2.y(), iso_vert_2.z())
-						));
+					const int beg_isoVertIdx = cur_cellBDPointIdx; // 等值线的起始端点在edgePWTVec中的索引
+					cur_cellBDPoint = walkIsoLine(isoEdgePointToIdx.at(cur_cellBDPoint)); // 获得在edgeTable中的索引并走完一条等值线，此时cur_cellBDPoint为等值线的末端点
+					const int end_isoVertIdx = isoEdgePointToPWTIdx.at(cur_cellBDPoint); // 等值线的末端点在edgePWTVec中的索引
 
-						curPoint = iso_vert_2;
-					} while (isoEdgePointToIdx.find(curPoint) == isoEdgePointToIdx.end()); // 直到等值线的某个点是边上的边界点为止
-					const int end_isoVertIdx = isoEdgePointToIdx.at(curPoint).first; // 等值线的末端点索引
+					cur_cellBDIsoVertIdxSet.insert(beg_isoVertIdx);
+					cur_cellBDIsoVertIdxSet.insert(end_isoVertIdx);
 
-					if (cellType != VERT_TYPE::EQUAL)
-					{
-						edgePWTVec[cur_cellPointIdx].type = cellType; // cur_cellPointIdx是等值线的起始端点索引
-						edgePWTVec[end_isoVertIdx].type = cellType;
-					}
-
-					cur_cellPointIdx = end_isoVertIdx;
-					last_cellIsoPointIdx = cur_cellPointIdx;
+					cur_cellBDPointIdx = end_isoVertIdx;
+					//last_cellIsoPointIdx = cur_cellBDPointIdx;
 				}
-				else
+				else if (cellType == CELL_TYPE::EQUAL)
+					cellType = edgePWTVec[cur_cellBDPointIdx].type; // 如果边界点是三角形的端点，则该cell的type由该端点确定
+
+				// 走向下一条边界边，并将边界边的vis设为true
+				int next_cellPointIdx = (cur_cellBDPointIdx + 1) % numEdgeCCWPoints;
+				const auto next_seg = std::make_pair(cur_cellBDPointIdx, next_cellPointIdx);
+				if (!isVisSeg.count(next_seg)) isVisSeg.insert(next_seg);
+
+				// push结果
+				const ApolloniusDiagramPoint_3 bd_edge_vert_1 = edgePWTVec[cur_cellBDPointIdx].pos;
+				const ApolloniusDiagramPoint_3 bd_edge_vert_2 = edgePWTVec[next_cellPointIdx].pos;
+				addConstrainedEdge(bd_edge_vert_1, bd_edge_vert_2);
+
+				cur_cellBDPointIdx = next_cellPointIdx;
+			} while (cur_cellBDPointIdx != beg_cellBDPointIdx);
+
+			// 更新经过的所有等值线端点的type
+			if (cellType == CELL_TYPE::EQUAL) std::cerr << "Error! Cell type is not be updated!\n";
+			std::for_each(cur_cellBDIsoVertIdxSet.begin(), cur_cellBDIsoVertIdxSet.end(), [&](int idx) {
+				edgePWTVec[idx].type = cellType;
+				});
+
+			std::vector<Vector3> verts; std::vector<int> vertIdx;
+			int meshVertIdx = (cellType == CELL_TYPE::INSIDE) ? insideMeshVertIdx : outsideMeshVertIdx;
+
+			if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
+			{
+				const auto aroundVerts = this->getFaceVec()[faceIdx]->aroundVerts();
+				std::cout << "端点#0: " << aroundVerts[0]->pos.transpose() << std::endl;
+				std::cout << "端点#1: " << aroundVerts[1]->pos.transpose() << std::endl;
+				std::cout << "端点#2: " << aroundVerts[2]->pos.transpose() << std::endl;
+			}
+
+			for (int i = 0; i < constrainedEdges.size(); ++i)
+			{
+				const auto& vert = constrainedEdges[i].vertex(0);
+				verts.emplace_back(vert.x(), vert.y(), vert.z());
+				vertIdx.emplace_back(meshVertIdx + i);
+
+				if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
 				{
-					// 如果边界点是三角形的端点，则该cell的type由该端点确定
-					if (cellType == VERT_TYPE::EQUAL) cellType = edgePWTVec[cur_cellPointIdx].type;
-
-					// 走向下一条边界边，并将边界边的vis设为true
-					int next_cellPointIdx = (cur_cellPointIdx + 1) % numEdgeCCWPoints;
-					const auto next_seg = std::make_pair(cur_cellPointIdx, next_cellPointIdx);
-					if (!isVisSeg.count(next_seg)) isVisSeg.insert(next_seg);
-
-					const ApolloniusDiagramPoint_3 bd_edge_vert_1 = edgePWTVec[cur_cellPointIdx].pos;
-					const ApolloniusDiagramPoint_3 bd_edge_vert_2 = edgePWTVec[next_cellPointIdx].pos;
-					_bdEdges.emplace_back(Segment_3(
-						Point_3(bd_edge_vert_1.x(), bd_edge_vert_1.y(), bd_edge_vert_1.z()),
-						Point_3(bd_edge_vert_2.x(), bd_edge_vert_2.y(), bd_edge_vert_2.z())
-					));
-
-					cur_cellPointIdx = next_cellPointIdx;
+					std::cout << "vert: " << vert << "\nvertIdx: meshVertIdx + i" << std::endl;
+					system("pause");
 				}
-			} while (beg_cellPointIdx != cur_cellPointIdx);
+			}
+			/*for (auto it = constrainedEdges.begin(); it != constrainedEdges.end(); ++it)
+			{
+				const auto& vert = it->vertex(0);
+				verts.emplace_back(vert.x(), vert.y(), vert.z());
+				vertIdx.emplace_back(meshVertIdx + it - constrainedEdges.begin());
+			}*/
+
+			if (cellType == CELL_TYPE::INSIDE) insideMeshVertIdx += verts.size(), insideMesh.emplace_back(verts, vertIdx);
+			else if (cellType == CELL_TYPE::OUTSIDE) outsideMeshVertIdx += verts.size(), outsideMesh.emplace_back(verts, vertIdx);
 
 			//// 2. 对每个区域计算CDT
 			//CDT_Cell cell(_bdEdges);
@@ -523,14 +605,31 @@ namespace core
 		{
 			// 保存当前面的ApolloniusDiagram顶点的信息
 			std::vector<ApolloniusDiagramPoint_3> curFacetADPoints;
+			//LOG::qpInfo("#facet ", i);
 
 			// 保存当前面的ApolloniusDiagram边的信息(通过顶点的输出索引进行存储)
 			std::vector<std::pair<int, int>> curFacetADLines;
 			std::unordered_map<int, std::vector<int>> edgeTable; // 保存该面power diagram点的邻边表
 			computeApolloniusGraphForFacet(i, globalOutVertIdx, curFacetADPoints, curFacetADLines, edgeTable);
+			//LOG::qpInfo("-- Compute coarse power diagram is finished!\n");
 
-			std::array<std::vector<ApolloniusDiagramPoint_3>, 3> edgePoints; // 保存在边上的(后处理过的)点
-			std::vector<ApolloniusDiagramPoint_3> projCurFacetADPoints = postProcessFacetPoints(i, curFacetADPoints, edgePoints);
+			if (i == 2173)
+			{
+				/*for (const auto& point : curFacetADPoints)
+				{
+					std::cout << "point = " << point.transpose() << std::endl;
+				}*/
+				//system("pause");
+			}
+
+			std::array<std::vector<ApolloniusDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
+			std::map<ApolloniusDiagramPoint_3, int> isoEdgePointToIdx; // 保存边上的(后处理过的)点到edgeTable索引的映射
+			const std::vector<ApolloniusDiagramPoint_3>& projCurFacetADPoints = postProcessFacetPoints(i, curFacetADPoints, isoEdgePoints, isoEdgePointToIdx);
+			//LOG::qpInfo("-- Post-processing is finished!\n");
+
+			// 计算CDT
+			const std::vector<CellTriangle>& cdt_res = computeCDTForFacet(i, projCurFacetADPoints, edgeTable, isoEdgePoints, isoEdgePointToIdx);
+			//LOG::qpInfo("-- Cutting is finished!\n");
 
 			// 输出Apollonius Diagram中的所有全局坐标点
 			for (const auto& adPoint : projCurFacetADPoints)
@@ -543,13 +642,27 @@ namespace core
 			{
 				out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
 			}
+
+			//LOG::qpSplit();
 		}
 	}
 
 	/* Visualization */
+	void MSCuttingModel::outputSamplePoints(std::ofstream& out)
+	{
+		if (out)
+		{
+			for (const auto& samplePoint : samplePoints)
+			{
+				out << "v " << samplePoint.pos.transpose() << std::endl;
+			}
+		}
+	}
+
 	/**
 	* @brief: Visualization of sample points on each edge
-	* @param out: 可视化结果的输出流
+	* @param out_1: 用于输出所有采样点的输出流
+	* @param out_2: 用于输出所有合理采样点的输出流
 	*/
 	void MSCuttingModel::outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2)
 	{
@@ -570,17 +683,59 @@ namespace core
 		}
 	}
 
+	/**
+	* @brief: Visualization of sample points on each edge
+	* @param out_1: 用于输出inside mesh
+	* @param out_2: 用于输出outside mesh
+	*/
+	void MSCuttingModel::outputCutMesh(std::ofstream& out_1, std::ofstream& out_2)
+	{
+		for (const auto& comp : insideMesh)
+		{
+			std::for_each(comp.pointVec.begin(), comp.pointVec.end(), [&out_1](Vector3 point) {
+				out_1 << "v " << point.transpose() << "\n";
+				});
+			out_1 << "f ";
+			std::for_each(comp.pointIdxVec.begin(), comp.pointIdxVec.end(), [&out_1](int pointIdx) {
+				out_1 << pointIdx + 1 << " ";
+				});
+			out_1 << "\n";
+		}
+
+		for (const auto& comp : outsideMesh)
+		{
+			std::for_each(comp.pointVec.begin(), comp.pointVec.end(), [&out_2](Vector3 point) {
+				out_2 << "v " << point.transpose() << "\n";
+				});
+			out_2 << "f ";
+			std::for_each(comp.pointIdxVec.begin(), comp.pointIdxVec.end(), [&out_2](int pointIdx) {
+				out_2 << pointIdx + 1 << " ";
+				});
+			out_2 << "\n";
+		}
+	}
+
 	/* API for user */
 	/**
 	* @brief: 暴露给用户调用的接口，用于运行整体算法
 	* @param filename: 输出结果所保存的文件位置
 	* @return: 算法运行成功/错误
 	*/
-	bool MSCuttingModel::launch(const std::string& ad_vis_file)
+	bool MSCuttingModel::launch(const std::string& ad_vis_file,
+		const std::string& insideMeshVisFile,
+		const std::string& outsideMeshVisFile)
 	{
 		str_util::checkDir(ad_vis_file);
 		std::ofstream ad_vis_out(ad_vis_file);
 		if (!ad_vis_out) { LOG::qpError("I/O: File ", ad_vis_file.c_str(), " could not be opened!"); return false; }
+
+		str_util::checkDir(insideMeshVisFile);
+		std::ofstream inside_vis_out(insideMeshVisFile);
+		if (!inside_vis_out) { LOG::qpError("I/O: File ", insideMeshVisFile.c_str(), " could not be opened!"); return false; }
+
+		str_util::checkDir(outsideMeshVisFile);
+		std::ofstream outside_vis_out(outsideMeshVisFile);
+		if (!outside_vis_out) { LOG::qpError("I/O: File ", outsideMeshVisFile.c_str(), " could not be opened!"); return false; }
 
 		samplePointPerEdge();
 
@@ -594,13 +749,16 @@ namespace core
 		std::ofstream valid_sample_vis_out(valid_sample_vis_file);
 		if (!valid_sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
 
-		LOG::qpInfo("Output Sample Points to ", std::quoted(ad_vis_file), " ...");
+		LOG::qpInfo("Output Sample Points to ", std::quoted(sample_vis_file), " ...");
 		outputSamplePoints(sample_vis_out, valid_sample_vis_out);
 		sample_vis_out.close();
 
 		LOG::qpInfo("Output Apollonius Diagram to ", std::quoted(ad_vis_file), " ...");
 		computeApolloniusGraph(ad_vis_out);
 		ad_vis_out.close();
+
+		outputCutMesh(inside_vis_out, outside_vis_out);
+		inside_vis_out.close(); inside_vis_out.close();
 
 		return true;
 	}

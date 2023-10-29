@@ -54,7 +54,7 @@ namespace core
 
 			CroppedVoronoiFromPower() noexcept = default;
 			CroppedVoronoiFromPower(const Polygon_2& _boundary) :m_boundary(_boundary) {
-				m_bbox = m_boundary.bbox()/* + Bbox_2(-1, -1, 1, 1)*/; // TODO: 是否有必要将boundingbox扩大一点？
+				m_bbox = m_boundary.bbox()/* + Iso_rectangle_2(-1, -1, 1, 1)*/; // TODO: 是否有必要将boundingbox扩大一点？
 			}
 			CroppedVoronoiFromPower(const CroppedVoronoiFromPower& other) {
 				m_cropSegments = other.m_cropSegments;
@@ -105,9 +105,10 @@ namespace core
 				{
 					const Segment_2 seg = *s;
 
-					CGAL::Bounded_side side1 = m_boundary.bounded_side(seg.source());
-					CGAL::Bounded_side side2 = m_boundary.bounded_side(seg.target());
+					const CGAL::Bounded_side side1 = m_boundary.bounded_side(seg.source());
+					const CGAL::Bounded_side side2 = m_boundary.bounded_side(seg.target());
 
+					// 都不在外部
 					if (side1 != CGAL::ON_UNBOUNDED_SIDE && side2 != CGAL::ON_UNBOUNDED_SIDE)
 					{
 						m_cropSegments.push_back(seg);
@@ -121,9 +122,10 @@ namespace core
 					Segment_2 clipSeg;
 					if (intersection_points.size() == 1)
 					{
+						// 都不在内部，说明交点是两个外部点相切而来的
 						if (side1 != CGAL::ON_BOUNDED_SIDE && side2 != CGAL::ON_BOUNDED_SIDE) return;
 						Point_2 innerPoint = seg.source();
-						if (side2 == CGAL::ON_BOUNDED_SIDE) innerPoint = seg.target();
+						if (side2 == CGAL::ON_BOUNDED_SIDE) innerPoint = seg.target(); // 如果target对应的端点在内部
 						clipSeg = Segment_2(innerPoint, intersection_points[0]);
 					}
 					else
@@ -133,6 +135,9 @@ namespace core
 					if (!isValidSeg(clipSeg)) return;
 
 					m_cropSegments.push_back(clipSeg);
+
+					/*const Segment_2 seg = *s;
+					m_cropSegments.push_back(seg);*/
 				}
 			}
 
