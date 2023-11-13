@@ -174,11 +174,12 @@ namespace core
 			for (int i = 0; i < sites.size(); ++i)
 			{
 				// 扰动项
-				K::Vector_2 vec((rand() / (double)RAND_MAX - 0.5) * 0.00001,
-					(rand() / (double)RAND_MAX - 0.5) * 0.00001);
+				K::Vector_2 vec((rand() / (double)RAND_MAX - 0.5) * 0.001,
+					(rand() / (double)RAND_MAX - 0.5) * 0.001);
 
 				const Point_2 disturbPos = sites[i].pos + vec;
 				Wp_2 site(disturbPos, sites[i].weight);
+				//std::cout << "Weight of site #" << i << " = " << sites[i].weight << std::endl;
 				siteToIdx.insert(std::make_pair(disturbPos, i));
 				rt.insert(site);
 			}
@@ -192,14 +193,26 @@ namespace core
 				auto site_1 = eit->first->vertex(CGAL::Triangulation_cw_ccw_2::ccw(eit->second))->point().point();
 				auto site_2 = eit->first->vertex(CGAL::Triangulation_cw_ccw_2::cw(eit->second))->point().point();
 
-				bool isLargeZero_1 = (sites[siteToIdx[site_1]].f_val > 0); // TODO; 等于0的情况
-				bool isLargeZero_2 = (sites[siteToIdx[site_2]].f_val > 0);
+				const double f_val_1 = sites[siteToIdx[site_1]].f_val;
+				const double f_val_2 = sites[siteToIdx[site_2]].f_val;
 
-				if (isLargeZero_1 ^ isLargeZero_2)
+				bool isLargeZero_1 = (f_val_1 > 1e-9); // TODO; 等于0的情况
+				bool isLargeZero_2 = (f_val_1 > 1e-9);
+				bool isEqualZero_1 = (std::fabs(f_val_1) < 1e-9);
+				bool isEqualZero_2 = (std::fabs(f_val_2) < 1e-9);
+				// 除去都等于0的情况，只要一个等于0或者二者异号就会保留
+				if ((isLargeZero_1 ^ isLargeZero_2) ||
+					((isEqualZero_1 || isEqualZero_2) && (isEqualZero_1 ^ isEqualZero_2)))
 				{
 					CGAL::Object o = rt.dual(eit);
 					vor.crop_and_extract_segment(o);
 				}
+
+				//if (isLargeZero_1 ^ isLargeZero_2)
+				/*{
+					CGAL::Object o = rt.dual(eit);
+					vor.crop_and_extract_segment(o);
+				}*/
 				//print the cropped Voronoi diagram edges as segments
 				/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
 					std::ostream_iterator<Segment_2>(std::cout, "\n"));

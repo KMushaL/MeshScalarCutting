@@ -71,8 +71,13 @@ namespace core
 
 			site.f_val = f_val;
 			/*site.weight = abs(-f_val / f_grad.norm()) * 0.9*/;
-			double _weight = f_val / f_grad.norm();
-			site.weight = _weight * _weight/* * 1.1*/;
+			//std::cout << "sample = " << sampleVert_dim3.transpose() << ", val = " << f_val << ", f_grad.norm = " << f_grad.norm() << std::endl;
+			if (f_grad.isApprox(Vector3(0, 0, 0), 1e-9)) site.weight = 0;
+			else
+			{
+				double _weight = f_val / (f_grad.norm() + 1e-6);
+				site.weight = _weight * _weight/* * 1.1*/;
+			}
 
 			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
 
@@ -87,7 +92,7 @@ namespace core
 	* @param point_2: 待转换的局部坐标点
 	* @return: 转换后的全局坐标
 	*/
-	Eigen::Vector3d MSCuttingModel::getGlobalCoordInFacet(int facetIdx, const ApolloniusDiagramPoint_2& point_2)
+	Eigen::Vector3d MSCuttingModel::getGlobalCoordInFacet(int facetIdx, const PowerDiagramPoint_2& point_2)
 	{
 		// TODO: 检查point_2是否在facetIdx对应的平面上
 
@@ -113,11 +118,12 @@ namespace core
 	* @param facetIdx: 面的索引
 	* @return: Apollonius Diagram边的数量
 	*/
-	int MSCuttingModel::computeApolloniusGraphForFacet(int facetIdx,
+	int MSCuttingModel::computePDForFacet(int facetIdx,
 		int& globalOutVertIdx,
-		std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
-		std::vector<std::pair<int, int>>& apolloniusDiagramLines,
-		std::unordered_map<int, std::vector<int>>& edgeTable)
+		std::vector<PowerDiagramPoint_3>& pdPoints,
+		std::vector<std::pair<int, int>>& pdLines,
+		std::unordered_map<int, std::vector<int>>& edgeTable,
+		std::map<PowerDiagramPoint_3, int>& pdPointToOutIdx)
 	{
 		const int originGlobalOutVertIdx = globalOutVertIdx;
 
@@ -158,51 +164,55 @@ namespace core
 		// 遍历每条边，转回全局坐标
 		for (const auto& lineSegemnt : adLineSegmentList)
 		{
-			const ApolloniusDiagramPoint_2 vert_1 = lineSegemnt.vertex(0);
-			const ApolloniusDiagramPoint_2 vert_2 = lineSegemnt.vertex(1);
+			const PowerDiagramPoint_2 vert_1 = lineSegemnt.vertex(0);
+			const PowerDiagramPoint_2 vert_2 = lineSegemnt.vertex(1);
 
 			int outVertIdx_1, outVertIdx_2; // 当前这两个点应输出的下标
 			if (pointToGlobalOutIdx.count(vert_1)) outVertIdx_1 = pointToGlobalOutIdx.at(vert_1);
 			else
 			{
-				ApolloniusDiagramPoint_3 apolloniusDiagramPoint = getGlobalCoordInFacet(facetIdx, vert_1);
-				apolloniusDiagramPoints.emplace_back(apolloniusDiagramPoint);
+				PowerDiagramPoint_3 pdPoint = getGlobalCoordInFacet(facetIdx, vert_1);
+				pdPoints.emplace_back(pdPoint);
 
 				outVertIdx_1 = globalOutVertIdx++;
 				pointToGlobalOutIdx.insert(std::make_pair(vert_1, outVertIdx_1));
+				pdPointToOutIdx.insert(std::make_pair(pdPoint, outVertIdx_1));
 			}
 
 			if (pointToGlobalOutIdx.count(vert_2)) outVertIdx_2 = pointToGlobalOutIdx.at(vert_2);
 			else
 			{
-				ApolloniusDiagramPoint_3 apolloniusDiagramPoint = getGlobalCoordInFacet(facetIdx, vert_2);
-				apolloniusDiagramPoints.emplace_back(apolloniusDiagramPoint);
+				PowerDiagramPoint_3 pdPoint = getGlobalCoordInFacet(facetIdx, vert_2);
+				pdPoints.emplace_back(pdPoint);
 
 				outVertIdx_2 = globalOutVertIdx++;
 				pointToGlobalOutIdx.insert(std::make_pair(vert_2, outVertIdx_2));
+				pdPointToOutIdx.insert(std::make_pair(pdPoint, outVertIdx_2));
 			}
 
 			// 保存这条边的两个顶点的索引
 			// TODO: 注意，我们这里假定每个点当且仅当只会和一个点相邻
-			apolloniusDiagramLines.emplace_back(std::make_pair(outVertIdx_1, outVertIdx_2));
+			pdLines.emplace_back(std::make_pair(outVertIdx_1, outVertIdx_2));
 
 			// edgeTable保存的是局部索引
 			edgeTable[outVertIdx_1 - originGlobalOutVertIdx].emplace_back(outVertIdx_2 - originGlobalOutVertIdx);
 			edgeTable[outVertIdx_2 - originGlobalOutVertIdx].emplace_back(outVertIdx_1 - originGlobalOutVertIdx);
 		}
 
-		return apolloniusDiagramLines.size();
+		return pdLines.size();
 	}
 
 	/* Post-processing */
-	std::vector<MSCuttingModel::ApolloniusDiagramPoint_3>
+	std::vector<MSCuttingModel::PowerDiagramPoint_3>
 		MSCuttingModel::postProcessFacetPoints(const int faceIdx,
-			const std::vector<ApolloniusDiagramPoint_3>& curFacetADPoints,
-			std::array<std::vector<ApolloniusDiagramPoint_3>, 3>& edgePoints,
-			std::map<ApolloniusDiagramPoint_3, int>& edgePointToIdx)
+			const std::vector<PowerDiagramPoint_3>& curFacetADPoints,
+			const std::map<PowerDiagramPoint_3, int>& pdPointToOutIdx,
+			std::array<std::vector<PowerDiagramPoint_3>, 3>& edgePoints,
+			std::map<PowerDiagramPoint_3, int>& edgePointToIdx,
+			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>& edgeToPointsInNeighFace)
 	{
 		int numADPoints = curFacetADPoints.size();
-		std::vector<ApolloniusDiagramPoint_3> resPoints;
+		std::vector<PowerDiagramPoint_3> resPoints;
 
 		// aabb initialization
 		igl::AABB<MatrixX, 3> tri_aabb;
@@ -216,42 +226,62 @@ namespace core
 		tri_aabb.init(singleTriV, singleTriF);
 
 		using VertIdx = std::pair<int, int>;
+		const auto hEdge = this->getFaceVec()[faceIdx]->halfEdge();
+		std::array<int, 3> faceEdgeIdx;
+		auto _hEdge = hEdge;
+		for (int i = 0; i < 3; ++i) { faceEdgeIdx[i] = _hEdge->mEdge()->index; _hEdge = _hEdge->nextHEdge(); }
+
 		const std::array<VertIdx, 3> triEdges = {
 			VertIdx(0, 1),
 			VertIdx(1, 2),
 			VertIdx(2, 0)
 		};
+		//for (int i = 0; i < 3; ++i) { triEdges[i] = VertIdx(hEdge->froVertex()->index, hEdge->nextVertex()->index); _hEdge = _hEdge->nextHEdge(); }
+		const auto mEdgeVec = this->getMEdgeVec();
 		const std::array<Vector3, 3> triEdgesDir = {
 			(triVerts[1]->pos - triVerts[0]->pos).normalized(),
 			(triVerts[2]->pos - triVerts[1]->pos).normalized(),
 			(triVerts[0]->pos - triVerts[2]->pos).normalized()
 		};
+		/*std::array<Vector3, 3> triEdgesDir;
+		_hEdge = hEdge;
+		for (int i = 0; i < 3; ++i) { triEdgesDir[i] = _hEdge->dir().normalized(); _hEdge = _hEdge->nextHEdge(); }*/
 
 #pragma omp parallel for
 		for (int i = 0; i < numADPoints; ++i) {
-			const ApolloniusDiagramPoint_3 originalADPoint = curFacetADPoints[i];
+			const PowerDiagramPoint_3 originalADPoint = curFacetADPoints[i];
 
 			// 判断点是否在边上
 			int onEdgeIdx = -1;
+			int globalOutIdx = -1;
 			for (int i = 0; i < 3; ++i) {
 				const Vector3 v1 = triVerts[triEdges[i].first]->pos;
 
 				// TODO: Exact Predicates
-				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalADPoint - v1).normalized()).norm() < 1e-9) { onEdgeIdx = i; break; }
+				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalADPoint - v1).normalized()).norm() < 1e-9) {
+					onEdgeIdx = i;
+					globalOutIdx = pdPointToOutIdx.at(originalADPoint);
+					break;
+				}
 			}
 
 			VectorX tri_sqrD; VectorXi tri_I; MatrixX tri_C; MatrixX projQ(1, 3);
 
 			// for computing projection point
-			ApolloniusDiagramPoint_3 lastPoint = originalADPoint;
-			ApolloniusDiagramPoint_3 projPoint;
+			PowerDiagramPoint_3 lastPoint = originalADPoint;
+			PowerDiagramPoint_3 projPoint;
 			Scalar lastVal; Vector3 lastGrad; double alpha;
 
 			int iter = 0;
 			while (iter < 50) {
-				++iter;
-
 				lastVal = scalarFunc.val(lastPoint);
+				if (std::fabs(lastVal) < 1e-9)
+				{
+					projPoint = lastPoint;
+					break;
+				}
+
+				++iter;
 				lastGrad = scalarFunc.grad(lastPoint);
 
 				alpha = -lastVal / (lastGrad.squaredNorm() + 1e-6);
@@ -273,7 +303,7 @@ namespace core
 
 				if ((projPoint - lastPoint).norm() < PROJ_EPSILON) break;
 				else lastPoint = projPoint;
-			};
+			}
 
 			//resPoints[i] = projPoint;
 
@@ -288,6 +318,7 @@ namespace core
 					{
 						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
 						edgePoints[onEdgeIdx].emplace_back(projPoint);
+						edgeToPointsInNeighFace[faceEdgeIdx[onEdgeIdx]][faceIdx].emplace_back(projPoint, globalOutIdx);
 					}
 				}
 
@@ -298,11 +329,11 @@ namespace core
 
 		// 将边上的点统一按逆时针排序
 		struct CCWSort {
-			ApolloniusDiagramPoint_3 edgeBaseVert;
+			PowerDiagramPoint_3 edgeBaseVert;
 			Vector3 edgeDir;
-			CCWSort(const ApolloniusDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
+			CCWSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
 
-			bool operator()(const ApolloniusDiagramPoint_3& lhs, const ApolloniusDiagramPoint_3& rhs)
+			bool operator()(const PowerDiagramPoint_3& lhs, const PowerDiagramPoint_3& rhs)
 			{
 				return ((lhs - edgeBaseVert).dot(edgeDir) < (rhs - edgeBaseVert).dot(edgeDir));
 			}
@@ -319,32 +350,32 @@ namespace core
 
 	std::vector<typename MSCuttingModel::CellTriangle>
 		MSCuttingModel::computeCDTForFacet(const int faceIdx,
-			const std::vector<ApolloniusDiagramPoint_3>& isoLineVerts,
+			const std::vector<PowerDiagramPoint_3>& isoLineVerts,
 			const std::unordered_map<int, std::vector<int>>& edgeTable,
-			const std::array<std::vector<ApolloniusDiagramPoint_3>, 3>& isoEdgePoints,
-			const std::map<ApolloniusDiagramPoint_3, int>& isoEdgePointToIdx)
+			const std::array<std::vector<PowerDiagramPoint_3>, 3>& isoEdgePoints,
+			const std::map<PowerDiagramPoint_3, int>& isoEdgePointToIdx)
 	{
 
 		// 1. 搜寻边界边并确定区域
 		// 1.1 按逆时针将所有边上的点(包括面的端点)按逆时针排序
 		/*std::queue<int> edgeCCWPointsIdxQueue;
-		std::vector<ApolloniusDiagramPoint_3> edgeCCWPoints;*/
+		std::vector<PowerDiagramPoint_3> edgeCCWPoints;*/
 		using VertIdxPair = std::pair<int, int>;
 		std::queue<VertIdxPair> bdSegQueue;
 		std::set<VertIdxPair> isVisSeg;
 
 		// Initialize cycle(counter clock-wise) points
 		struct EdgePointWithType {
-			ApolloniusDiagramPoint_3 pos;
+			PowerDiagramPoint_3 pos;
 			CELL_TYPE type = CELL_TYPE::EQUAL;
 
-			EdgePointWithType(const ApolloniusDiagramPoint_3& _pos) :pos(_pos) {}
-			EdgePointWithType(const ApolloniusDiagramPoint_3& _pos, const CELL_TYPE& _type) :pos(_pos), type(_type) {}
+			EdgePointWithType(const PowerDiagramPoint_3& _pos) :pos(_pos) {}
+			EdgePointWithType(const PowerDiagramPoint_3& _pos, const CELL_TYPE& _type) :pos(_pos), type(_type) {}
 		};
 		std::vector<EdgePointWithType> edgePWTVec;
 
 		// TODO: 目前没有对edgeCyclePoints做一个去重工作，也就是说即使三角形端点和等值线上的边界点几乎是一个点但目前也认为是两个点
-		int prefixSum = 0; std::map<ApolloniusDiagramPoint_3, int> isoEdgePointToPWTIdx; // 存储等值线的边界点到edgePWTVec中的索引
+		int prefixSum = 0; std::map<PowerDiagramPoint_3, int> isoEdgePointToPWTIdx; // 存储等值线的边界点到edgePWTVec中的索引
 		const auto& triVerts = this->getFaceVec()[faceIdx]->aroundVerts();
 		auto initCCWEdgePointData = [&](int triVertIdx) {
 			edgePWTVec.emplace_back(triVerts[triVertIdx]->pos, meshVertsType[triVerts[triVertIdx]->index]);
@@ -374,25 +405,25 @@ namespace core
 		std::vector<typename CDT_Cell::_Edge> constrainedEdges;
 
 		// 添加constrained edge的helper function
-		auto addConstrainedEdge = [&constrainedEdges](const ApolloniusDiagramPoint_3& vert_1,
-			const ApolloniusDiagramPoint_3& vert_2) {
+		auto addConstrainedEdge = [&constrainedEdges](const PowerDiagramPoint_3& vert_1,
+			const PowerDiagramPoint_3& vert_2) {
 				constrainedEdges.emplace_back(
 					Point_3(vert_1.x(), vert_1.y(), vert_1.z()),
 					Point_3(vert_2.x(), vert_2.y(), vert_2.z()));
 			};
 		// 完整走一段等值线的helper function
 		auto walkIsoLine = [&](int beg_isoVertTableIdx) {
-			ApolloniusDiagramPoint_3 end_isoVert;
+			PowerDiagramPoint_3 end_isoVert;
 			int cur_isoVertTableIdx = beg_isoVertTableIdx;
 			std::unordered_set<int> isVisIsoVert;
 			do
 			{
 				isVisIsoVert.insert(cur_isoVertTableIdx);
 
-				const ApolloniusDiagramPoint_3 iso_vert_1 = isoLineVerts[cur_isoVertTableIdx];
+				const PowerDiagramPoint_3 iso_vert_1 = isoLineVerts[cur_isoVertTableIdx];
 				for (const auto& idx : edgeTable.at(cur_isoVertTableIdx))
 					if (!isVisIsoVert.count(idx)) cur_isoVertTableIdx = idx;  // TODO: 我们希望等值线上的每个点只有一个邻接点
-				const ApolloniusDiagramPoint_3 iso_vert_2 = isoLineVerts[cur_isoVertTableIdx];
+				const PowerDiagramPoint_3 iso_vert_2 = isoLineVerts[cur_isoVertTableIdx];
 				addConstrainedEdge(iso_vert_1, iso_vert_2); // push结果
 
 				end_isoVert = iso_vert_2;
@@ -419,7 +450,7 @@ namespace core
 
 			//int last_cellIsoPointIdx = -1; // 防止重复走一条等值线
 			do {
-				ApolloniusDiagramPoint_3 cur_cellBDPoint = edgePWTVec[cur_cellBDPointIdx].pos; // 存储当前cell正在处理的边界点
+				PowerDiagramPoint_3 cur_cellBDPoint = edgePWTVec[cur_cellBDPointIdx].pos; // 存储当前cell正在处理的边界点
 
 				// 如果边界点是某段等值线上的点
 				if (isoEdgePointToIdx.count(cur_cellBDPoint)/* &&
@@ -448,8 +479,8 @@ namespace core
 				if (!isVisSeg.count(next_seg)) isVisSeg.insert(next_seg);
 
 				// push结果
-				const ApolloniusDiagramPoint_3 bd_edge_vert_1 = edgePWTVec[cur_cellBDPointIdx].pos;
-				const ApolloniusDiagramPoint_3 bd_edge_vert_2 = edgePWTVec[next_cellPointIdx].pos;
+				const PowerDiagramPoint_3 bd_edge_vert_1 = edgePWTVec[cur_cellBDPointIdx].pos;
+				const PowerDiagramPoint_3 bd_edge_vert_2 = edgePWTVec[next_cellPointIdx].pos;
 				addConstrainedEdge(bd_edge_vert_1, bd_edge_vert_2);
 
 				cur_cellBDPointIdx = next_cellPointIdx;
@@ -464,13 +495,13 @@ namespace core
 			std::vector<Vector3> verts; std::vector<int> vertIdx;
 			int meshVertIdx = (cellType == CELL_TYPE::INSIDE) ? insideMeshVertIdx : outsideMeshVertIdx;
 
-			if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
+			/*if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
 			{
 				const auto aroundVerts = this->getFaceVec()[faceIdx]->aroundVerts();
 				std::cout << "端点#0: " << aroundVerts[0]->pos.transpose() << std::endl;
 				std::cout << "端点#1: " << aroundVerts[1]->pos.transpose() << std::endl;
 				std::cout << "端点#2: " << aroundVerts[2]->pos.transpose() << std::endl;
-			}
+			}*/
 
 			for (int i = 0; i < constrainedEdges.size(); ++i)
 			{
@@ -478,11 +509,11 @@ namespace core
 				verts.emplace_back(vert.x(), vert.y(), vert.z());
 				vertIdx.emplace_back(meshVertIdx + i);
 
-				if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
+				/*if (faceIdx == 2173 && cellType == CELL_TYPE::INSIDE)
 				{
 					std::cout << "vert: " << vert << "\nvertIdx: meshVertIdx + i" << std::endl;
 					system("pause");
-				}
+				}*/
 			}
 			/*for (auto it = constrainedEdges.begin(); it != constrainedEdges.end(); ++it)
 			{
@@ -512,10 +543,11 @@ namespace core
 	*/
 	int MSCuttingModel::samplePointPerEdge()
 	{
-		if (numSamplesPerEdge <= 0)
+		if (numSamplesPerEdge < 0)
 		{
-			LOG::qpWarn("The number of sample points is smaller than 0, the process of sampling is terminated.");
-			return 0;
+			numSamplesPerEdge = 0;
+			LOG::qpWarn("The number of sample points is smaller than 0, no samples will on edge.");
+			//return 0;
 		}
 
 		using Point3 = typename HEVert::Point3; // 其实就是Eigen::Vector3
@@ -524,6 +556,8 @@ namespace core
 		// 获得所有model edge
 		const auto& modelEdges = this->getMEdgeVec();
 		int numSplits = numSamplesPerEdge + 1;
+
+		std::set<Point3> samplePointSet;
 
 		// 对每条边计算numSamplesPerEdge个采样点
 		for (const auto& mEdge : modelEdges)
@@ -550,6 +584,9 @@ namespace core
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
+				/*std::cout << "curSamplePointPos = " << curSamplePointPos.transpose() << std::endl;
+				system("pause");*/
+
 				// 计算当前采样点的值
 				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
 
@@ -568,14 +605,21 @@ namespace core
 					// push结果
 					if (facet_1 != -1)
 					{
+						if (!sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
+						{
+							sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
+							sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
+						}
 						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
-						sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
-
 					}
 					if (facet_2 != -1)
 					{
+						if (!sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
+						{
+							sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
+							sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
+						}
 						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
-						sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
 					}
 
 					preInsertedIdx = k;
@@ -585,6 +629,8 @@ namespace core
 				preIsLargeZero = curIsLargeZero;
 				preSamplePoint = curSamplePoint;*/
 
+				if (samplePointSet.count(curSamplePointPos)) continue;
+				samplePointSet.insert(curSamplePointPos);
 				samplePoints.emplace_back(curSamplePoint);
 			}
 		}
@@ -601,49 +647,104 @@ namespace core
 	void MSCuttingModel::computeApolloniusGraph(std::ofstream& out)
 	{
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
+		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
+		std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>> edgeToPointsInNeighFace; // 保存边到其关联的两个face的所有存在该条边上点的映射
+		//for (int i = 8; i < 9; ++i)
 		for (int i = 0; i < numMeshFaces; ++i)
 		{
-			// 保存当前面的ApolloniusDiagram顶点的信息
-			std::vector<ApolloniusDiagramPoint_3> curFacetADPoints;
+			// 保存当前面的PowerDiagram顶点的信息
+			std::vector<PowerDiagramPoint_3> curFacetPDPoints;
 			//LOG::qpInfo("#facet ", i);
 
-			// 保存当前面的ApolloniusDiagram边的信息(通过顶点的输出索引进行存储)
-			std::vector<std::pair<int, int>> curFacetADLines;
+			// 保存当前面的PowerDiagram边的信息(通过顶点的输出索引进行存储)
+			std::vector<std::pair<int, int>> curFacetPDLines;
 			std::unordered_map<int, std::vector<int>> edgeTable; // 保存该面power diagram点的邻边表
-			computeApolloniusGraphForFacet(i, globalOutVertIdx, curFacetADPoints, curFacetADLines, edgeTable);
+			computePDForFacet(i, globalOutVertIdx, curFacetPDPoints, curFacetPDLines, edgeTable, pdPointToOutIdx);
 			//LOG::qpInfo("-- Compute coarse power diagram is finished!\n");
 
-			if (i == 2173)
-			{
-				/*for (const auto& point : curFacetADPoints)
-				{
-					std::cout << "point = " << point.transpose() << std::endl;
-				}*/
-				//system("pause");
-			}
+			//if (i == 2173)
+			//{
+			//	/*for (const auto& point : curFacetADPoints)
+			//	{
+			//		std::cout << "point = " << point.transpose() << std::endl;
+			//	}*/
+			//	//system("pause");
+			//}
 
-			std::array<std::vector<ApolloniusDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
-			std::map<ApolloniusDiagramPoint_3, int> isoEdgePointToIdx; // 保存边上的(后处理过的)点到edgeTable索引的映射
-			const std::vector<ApolloniusDiagramPoint_3>& projCurFacetADPoints = postProcessFacetPoints(i, curFacetADPoints, isoEdgePoints, isoEdgePointToIdx);
+			std::array<std::vector<PowerDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
+			std::map<PowerDiagramPoint_3, int> isoEdgePointToIdx; // 保存边上的(后处理过的)点到edgeTable索引的映射
+			const std::vector<PowerDiagramPoint_3>& projCurFacetPDPoints =
+				postProcessFacetPoints(i, curFacetPDPoints, pdPointToOutIdx, isoEdgePoints, isoEdgePointToIdx, edgeToPointsInNeighFace);
 			//LOG::qpInfo("-- Post-processing is finished!\n");
 
 			// 计算CDT
-			const std::vector<CellTriangle>& cdt_res = computeCDTForFacet(i, projCurFacetADPoints, edgeTable, isoEdgePoints, isoEdgePointToIdx);
+			//const std::vector<CellTriangle>& cdt_res = computeCDTForFacet(i, projCurFacetADPoints, edgeTable, isoEdgePoints, isoEdgePointToIdx);
 			//LOG::qpInfo("-- Cutting is finished!\n");
 
 			// 输出Apollonius Diagram中的所有全局坐标点
-			for (const auto& adPoint : projCurFacetADPoints)
+			for (const auto& adPoint : /*curFacetPDPoints*/projCurFacetPDPoints)
 			{
 				out << "v " << adPoint.transpose() << std::endl;
 			}
 
 			// 输出Apollonius Diagram中的所有边
-			for (const auto& vertIdxPair : curFacetADLines)
+			for (const auto& vertIdxPair : curFacetPDLines)
 			{
 				out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
 			}
 
 			//LOG::qpSplit();
+		}
+
+		// 将边上的点统一按逆时针排序
+		struct DirSort {
+			PowerDiagramPoint_3 edgeBaseVert;
+			Vector3 edgeDir;
+			DirSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
+
+			bool operator()(const std::pair<PowerDiagramPoint_3, int>& lhs, const std::pair<PowerDiagramPoint_3, int>& rhs)
+			{
+				return ((lhs.first - edgeBaseVert).dot(edgeDir) < (rhs.first - edgeBaseVert).dot(edgeDir));
+			}
+		};
+		const auto& mEdgeVec = this->getMEdgeVec();
+		std::vector<std::pair<std::pair<PowerDiagramPoint_3, int>, std::pair<PowerDiagramPoint_3, int>>> groupEdgePoint;
+		for (auto& edge_face_point : edgeToPointsInNeighFace)
+		{
+			if (edge_face_point.second.size() < 2) continue;
+			if (edge_face_point.second.size() != 2) { LOG::qpError("Non-manifold edge!"); continue; }
+
+			const int mEdgeIdx = edge_face_point.first;
+			const auto mEdgeVerts = mEdgeVec[mEdgeIdx]->verts();
+			const Vector3 mEdgeDir = (mEdgeVerts.second->pos - mEdgeVerts.first->pos).normalized();
+			const auto baseVert = mEdgeVerts.first->pos;
+
+			DirSort dirSort(baseVert, mEdgeDir);
+
+			int idx = 0;
+			std::array<int, 2> edgeNeighFace;
+			for (auto& face_point : edge_face_point.second)
+			{
+				edgeNeighFace[idx++] = face_point.first;
+				std::sort(face_point.second.begin(), face_point.second.end(), dirSort);
+			}
+
+			for (int j = 0; j < edge_face_point.second.at(edgeNeighFace[0]).size(); ++j)
+			{
+				auto p1 = edge_face_point.second.at(edgeNeighFace[0])[j];
+				auto p2 = edge_face_point.second.at(edgeNeighFace[1])[j];
+				if ((p1.first - baseVert).dot(mEdgeDir) > (p2.first - baseVert).dot(mEdgeDir)) std::swap(p1, p2);
+				groupEdgePoint.emplace_back(p1, p2);
+				out << "l " << p1.second << " " << p2.second << std::endl;
+			}
+
+			if (groupEdgePoint.size() >= 2)
+				for (int i = 0; i < groupEdgePoint.size() - 1; ++i)
+				{
+					if (scalarFunc.grad(groupEdgePoint[i].second.first).normalized().
+						isApprox(scalarFunc.grad(groupEdgePoint[i + 1].first.first).normalized()))
+						out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
+				}
 		}
 	}
 
@@ -726,39 +827,44 @@ namespace core
 		const std::string& outsideMeshVisFile)
 	{
 		str_util::checkDir(ad_vis_file);
-		std::ofstream ad_vis_out(ad_vis_file);
-		if (!ad_vis_out) { LOG::qpError("I/O: File ", ad_vis_file.c_str(), " could not be opened!"); return false; }
-
-		str_util::checkDir(insideMeshVisFile);
-		std::ofstream inside_vis_out(insideMeshVisFile);
-		if (!inside_vis_out) { LOG::qpError("I/O: File ", insideMeshVisFile.c_str(), " could not be opened!"); return false; }
-
-		str_util::checkDir(outsideMeshVisFile);
-		std::ofstream outside_vis_out(outsideMeshVisFile);
-		if (!outside_vis_out) { LOG::qpError("I/O: File ", outsideMeshVisFile.c_str(), " could not be opened!"); return false; }
+		std::ofstream pd_vis_out(ad_vis_file);
+		if (!pd_vis_out) { LOG::qpError("I/O: File ", ad_vis_file.c_str(), " could not be opened!"); return false; }
 
 		samplePointPerEdge();
 
-		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, (std::string)"sample_points.obj");
+		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), (std::string)"sample_points.obj");
 		str_util::checkDir(sample_vis_file);
 		std::ofstream sample_vis_out(sample_vis_file);
 		if (!sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
 
-		const std::string valid_sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, (std::string)"valid_sample_points.obj");
+		/*const std::string valid_sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), (std::string)"valid_sample_points.obj");
 		str_util::checkDir(valid_sample_vis_file);
 		std::ofstream valid_sample_vis_out(valid_sample_vis_file);
-		if (!valid_sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
+		if (!valid_sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }*/
 
 		LOG::qpInfo("Output Sample Points to ", std::quoted(sample_vis_file), " ...");
-		outputSamplePoints(sample_vis_out, valid_sample_vis_out);
+		outputSamplePoints(sample_vis_out);
 		sample_vis_out.close();
 
-		LOG::qpInfo("Output Apollonius Diagram to ", std::quoted(ad_vis_file), " ...");
-		computeApolloniusGraph(ad_vis_out);
-		ad_vis_out.close();
+		LOG::qpInfo("Output Isoline to ", std::quoted(ad_vis_file), " ...");
+		computeApolloniusGraph(pd_vis_out);
+		pd_vis_out.close();
 
-		outputCutMesh(inside_vis_out, outside_vis_out);
-		inside_vis_out.close(); inside_vis_out.close();
+		bool cut = (!insideMeshVisFile.empty() && !outsideMeshVisFile.empty()) ? true : false;
+		if (!cut) LOG::qpInfo("Cutting process is disabled.");
+		if (cut)
+		{
+			str_util::checkDir(insideMeshVisFile);
+			std::ofstream inside_vis_out(insideMeshVisFile);
+			if (!inside_vis_out) { LOG::qpError("I/O: File ", insideMeshVisFile.c_str(), " could not be opened!"); return false; }
+
+			str_util::checkDir(outsideMeshVisFile);
+			std::ofstream outside_vis_out(outsideMeshVisFile);
+			if (!outside_vis_out) { LOG::qpError("I/O: File ", outsideMeshVisFile.c_str(), " could not be opened!"); return false; }
+
+			outputCutMesh(inside_vis_out, outside_vis_out);
+			inside_vis_out.close(); inside_vis_out.close();
+		}
 
 		return true;
 	}
@@ -823,16 +929,17 @@ namespace core
 	{
 		samplePointPerEdge();
 
-		// 保存当前面的ApolloniusDiagram顶点的信息
-		std::vector<ApolloniusDiagramPoint_3> facetADPoints;
+		// 保存当前面的PowerDiagram顶点的信息
+		std::vector<PowerDiagramPoint_3> facetADPoints;
 
-		// 保存当前面的ApolloniusDiagram边的信息(通过顶点的输出索引进行存储)
+		// 保存当前面的PowerDiagram边的信息(通过顶点的输出索引进行存储)
 		std::vector<std::pair<int, int>> facetADLines;
 
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
 
 		std::unordered_map<int, std::vector<int>> edgeTable; // 保存该面power diagram点的邻边表
-		int numADLines = computeApolloniusGraphForFacet(facetIdx, globalOutVertIdx, facetADPoints, facetADLines, edgeTable);
+		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
+		int numADLines = computePDForFacet(facetIdx, globalOutVertIdx, facetADPoints, facetADLines, edgeTable, pdPointToOutIdx);
 
 		LOG::qpTest("The number of edges of Apollonius Diagram = ", numADLines);
 

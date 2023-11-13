@@ -28,14 +28,14 @@ namespace core
 			因为我们只有在调用Apollonius时用到了CGAL，为了方便起见，
 			三维下的点仍用Eigen的Data type，二维下的点使用CGAL的Point_2
 		*/
-		using ApolloniusDiagramPoint_2 = typename ApolloniusGraphAdaptor::ApolloniusDiagramPoint_2;
-		using ApolloniusDiagramLine_2 = typename ApolloniusGraphAdaptor::ApolloniusDiagramLine_2;
-		using ApolloniusDiagramPoint_3 = Eigen::Vector3d;
-		using ApolloniusDiagramLine_3 = std::pair<ApolloniusDiagramPoint_3, ApolloniusDiagramPoint_3>;
+		using PowerDiagramPoint_2 = typename PowerDiagramAdaptor::PowerDiagramPoint_2;
+		using PowerDiagramLine_2 = typename PowerDiagramAdaptor::PowerDiagramLine_2;
+		using PowerDiagramPoint_3 = Eigen::Vector3d;
+		using PowerDiagramLine_3 = std::pair<PowerDiagramPoint_3, PowerDiagramPoint_3>;
 		using CDTriangle = typename CDTAdaptor::CDTriangle;
 
-		using ScalarValFunc = std::function<Scalar(const ApolloniusDiagramPoint_3&)>;
-		using GradFunc = std::function<Eigen::Vector3d(const ApolloniusDiagramPoint_3&)>;
+		using ScalarValFunc = std::function<Scalar(const PowerDiagramPoint_3&)>;
+		using GradFunc = std::function<Eigen::Vector3d(const PowerDiagramPoint_3&)>;
 
 		struct ScalarFunc {
 			ScalarValFunc val;
@@ -50,19 +50,19 @@ namespace core
 
 		/* 采样点定义 */
 		struct SamplePoint {
-			int mEdgeIdx = -1;								// 属于的边(注意是model edge，而不是half edge)
-			Eigen::Vector3d pos;							// 采样点坐标
+			int mEdgeIdx = -1;					// 属于的边(注意是model edge，而不是half edge)
+			Vector3 pos;							// 采样点坐标
 			double val;
 
 			SamplePoint() {}
-			SamplePoint(const Eigen::Vector3d& _pos, int _mEdgeIdx, double _val) :pos(_pos), mEdgeIdx(_mEdgeIdx), val(_val) {}
+			SamplePoint(const Vector3& _pos, int _mEdgeIdx, double _val) :pos(_pos), mEdgeIdx(_mEdgeIdx), val(_val) {}
 
 			SamplePoint(const SamplePoint& other) { mEdgeIdx = other.mEdgeIdx; pos = other.pos; val = other.val; }
 		};
 
 		/* (二维)带权重点(站点)定义 */
 		struct WeightPoint {
-			using _Point = ApolloniusDiagramPoint_2;
+			using _Point = PowerDiagramPoint_2;
 			_Point pos;
 			double weight = 0;								// 先都设为0
 			double f_val = DINF;
@@ -77,6 +77,7 @@ namespace core
 
 			Basis x_basis, y_basis;							// 局部坐标系
 			Eigen::Vector3d origin;							// 局部坐标系的原点
+			std::set<Point3> aroundSamplePointsSet;
 			std::vector<SamplePoint> aroundSamplePoints;	// 包含的(边)采样点
 			std::vector<WeightPoint> sites;					// 所有站点
 
@@ -173,26 +174,29 @@ namespace core
 		int updateFacetLocalCoord(int facetIdx, Polygon_2& facetBoundary);
 
 		/* Transform coordinate of point from local to global after computing Apollonius Graph */
-		Eigen::Vector3d getGlobalCoordInFacet(int facetIdx, const ApolloniusDiagramPoint_2& point_2);
+		Eigen::Vector3d getGlobalCoordInFacet(int facetIdx, const PowerDiagramPoint_2& point_2);
 
-		int computeApolloniusGraphForFacet(int facetIdx,
+		int computePDForFacet(int facetIdx,
 			int& globalOutVertIdx, // 用于控制等值线的输出索引值
-			std::vector<ApolloniusDiagramPoint_3>& apolloniusDiagramPoints,
+			std::vector<PowerDiagramPoint_3>& apolloniusDiagramPoints,
 			std::vector<std::pair<int, int>>& apolloniusDiagramLines,
-			std::unordered_map<int, std::vector<int>>& edgeTable);
+			std::unordered_map<int, std::vector<int>>& edgeTable,
+			std::map<PowerDiagramPoint_3, int>&);
 
 		static constexpr double PROJ_EPSILON = 1e-6;
-		std::vector<ApolloniusDiagramPoint_3> postProcessFacetPoints(int faceIdx,
-			const std::vector<ApolloniusDiagramPoint_3>&,
-			std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
-			std::map<ApolloniusDiagramPoint_3, int>&);
+		std::vector<PowerDiagramPoint_3> postProcessFacetPoints(int faceIdx,
+			const std::vector<PowerDiagramPoint_3>&,
+			const std::map<PowerDiagramPoint_3, int>&,
+			std::array<std::vector<PowerDiagramPoint_3>, 3>&,
+			std::map<PowerDiagramPoint_3, int>&,
+			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>&);
 
 		using CellTriangle = std::vector<CDTriangle>;
 		std::vector<CellTriangle> computeCDTForFacet(int faceIdx,
-			const std::vector<ApolloniusDiagramPoint_3>&,
+			const std::vector<PowerDiagramPoint_3>&,
 			const std::unordered_map<int, std::vector<int>>&,
-			const std::array<std::vector<ApolloniusDiagramPoint_3>, 3>&,
-			const std::map<ApolloniusDiagramPoint_3, int>&);
+			const std::array<std::vector<PowerDiagramPoint_3>, 3>&,
+			const std::map<PowerDiagramPoint_3, int>&);
 
 	private:
 		/* Methods for Our Algorithm */
@@ -211,8 +215,8 @@ namespace core
 	public:
 		/* API for user */
 		bool launch(const std::string& ad_vis_file,
-			const std::string& insideMeshVisFile,
-			const std::string& outsideMeshVisFile); // 分别传递的等值线的保存位置以及切割后的内外mesh保存位置
+			const std::string& insideMeshVisFile = "",
+			const std::string& outsideMeshVisFile = ""); // 分别传递的等值线的保存位置以及切割后的内外mesh保存位置
 
 	public:
 		/* Test APIs for us */
