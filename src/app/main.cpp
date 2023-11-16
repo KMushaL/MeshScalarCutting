@@ -11,15 +11,17 @@ using ScalarFunc = core::MSCuttingModel::ScalarFunc;
 // level-set定义: 函数式和梯度
 Scalar val(const Eigen::Vector3d& p)
 {
+	return p.x() * p.x() + p.y() * p.y() - 1;
 	//return p.y() * p.y() - p.x() * p.x() + p.x() * p.x() * p.x();
-	return p.x() - p.y();
+	//return p.x() - p.y();
 	//return (p.x() + 1) * (p.x() + 1) + (p.y()) * (p.y()) + (p.z()) * (p.z()) - 2.25;
 	//return (p.x()) * (p.x()) + (p.y()) * (p.y()) + (p.z()) * (p.z()) - 1;
 }
 Eigen::Vector3d grad(const Eigen::Vector3d& p)
 {
+	return  2 * Eigen::Vector3d(p.x(), p.y(), 0);
 	//return Eigen::Vector3d(3 * p.x() * p.x() - 2 * p.x(), 2 * p.y(), 0);
-	return Eigen::Vector3d(1, -1, 0);
+	//return Eigen::Vector3d(1, -1, 0);
 	//return 2 * Eigen::Vector3d((p.x() + 1), p.y(), p.z());
 	//return 2 * Eigen::Vector3d(p.x(), p.y(), p.z());
 }
@@ -31,7 +33,7 @@ int main(int argc, char** argv)
 	//app.add_flag("-h,--help", "Print configuration and exit.");
 
 	//std::string modelArg = R"(test2d.obj)";
-	std::string modelArg = R"(square2.obj)";
+	std::string modelArg = R"(square3.obj)";
 	app.add_option("-f,--file", modelArg,
 		"Input model's name with extension.")/*->required()*/;
 

@@ -212,7 +212,7 @@ namespace core
 			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>& edgeToPointsInNeighFace)
 	{
 		int numADPoints = curFacetADPoints.size();
-		std::vector<PowerDiagramPoint_3> resPoints;
+		std::vector<PowerDiagramPoint_3> resPoints(numADPoints);
 
 		// aabb initialization
 		igl::AABB<MatrixX, 3> tri_aabb;
@@ -273,7 +273,7 @@ namespace core
 			Scalar lastVal; Vector3 lastGrad; double alpha;
 
 			int iter = 0;
-			while (iter < 50) {
+			while (iter < 10) {
 				lastVal = scalarFunc.val(lastPoint);
 				if (std::fabs(lastVal) < 1e-9)
 				{
@@ -297,7 +297,19 @@ namespace core
 				}
 				else
 				{
-					const Vector3 proj_grad = triEdgesDir[onEdgeIdx] * (alpha * lastGrad.dot(triEdgesDir[onEdgeIdx]) / (triEdgesDir[onEdgeIdx].norm()));
+					double max_move;
+					Vector3 proj_grad;
+					double t = (alpha * lastGrad).dot(triEdgesDir[onEdgeIdx]);
+					if (t >= 0)
+					{
+						max_move = std::min(t, (lastPoint - (triVerts[triEdges[onEdgeIdx].second])->pos).norm());
+						proj_grad = triEdgesDir[onEdgeIdx] * max_move;
+					}
+					else
+					{
+						max_move = std::min(-t, (lastPoint - (triVerts[triEdges[onEdgeIdx].first])->pos).norm());
+						proj_grad = -triEdgesDir[onEdgeIdx] * max_move;
+					}
 					projPoint = proj_grad + lastPoint;
 				}
 
@@ -305,45 +317,45 @@ namespace core
 				else lastPoint = projPoint;
 			}
 
-			//resPoints[i] = projPoint;
+			resPoints[i] = projPoint;
 
-			// TODO: 将去重工作移到外面，提升并行效率
-#pragma omp critical
-			{
-				// 目前对后处理后的所有点做了一个去重工作
-				if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
-				{
-					resPoints.emplace_back(projPoint);
-					if (onEdgeIdx != -1)
-					{
-						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
-						edgePoints[onEdgeIdx].emplace_back(projPoint);
-						edgeToPointsInNeighFace[faceEdgeIdx[onEdgeIdx]][faceIdx].emplace_back(projPoint, globalOutIdx);
-					}
-				}
-
-				/*if (i <= 50) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
-				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");*/
-			}
+			//			// TODO: 将去重工作移到外面，提升并行效率
+			//#pragma omp critical
+			//			{
+			//				// 目前对后处理后的所有点做了一个去重工作
+			//				if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
+			//				{
+			//					resPoints.emplace_back(projPoint);
+			//					if (onEdgeIdx != -1)
+			//					{
+			//						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
+			//						edgePoints[onEdgeIdx].emplace_back(projPoint);
+			//						edgeToPointsInNeighFace[faceEdgeIdx[onEdgeIdx]][faceIdx].emplace_back(projPoint, globalOutIdx);
+			//					}
+			//				}
+			//
+			//				/*if (i <= 50) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
+			//				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");*/
+			//			}
 		}
 
-		// 将边上的点统一按逆时针排序
-		struct CCWSort {
-			PowerDiagramPoint_3 edgeBaseVert;
-			Vector3 edgeDir;
-			CCWSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
-
-			bool operator()(const PowerDiagramPoint_3& lhs, const PowerDiagramPoint_3& rhs)
-			{
-				return ((lhs - edgeBaseVert).dot(edgeDir) < (rhs - edgeBaseVert).dot(edgeDir));
-			}
-		};
-		donut::Loop<int, 3>([&](int i) {
-			if (!edgePoints[i].empty()) {
-				CCWSort ccwSort(triVerts[i]->pos, triEdgesDir[i]);
-				std::sort(edgePoints[i].begin(), edgePoints[i].end(), ccwSort);
-			}
-			});
+		//// 将边上的点统一按逆时针排序
+		//struct CCWSort {
+		//	PowerDiagramPoint_3 edgeBaseVert;
+		//	Vector3 edgeDir;
+		//	CCWSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
+		//
+		//	bool operator()(const PowerDiagramPoint_3& lhs, const PowerDiagramPoint_3& rhs)
+		//	{
+		//		return ((lhs - edgeBaseVert).dot(edgeDir) < (rhs - edgeBaseVert).dot(edgeDir));
+		//	}
+		//};
+		//donut::Loop<int, 3>([&](int i) {
+		//	if (!edgePoints[i].empty()) {
+		//		CCWSort ccwSort(triVerts[i]->pos, triEdgesDir[i]);
+		//		std::sort(edgePoints[i].begin(), edgePoints[i].end(), ccwSort);
+		//	}
+		//	});
 
 		return resPoints;
 	}
@@ -682,10 +694,17 @@ namespace core
 			//LOG::qpInfo("-- Cutting is finished!\n");
 
 			// 输出Apollonius Diagram中的所有全局坐标点
-			for (const auto& adPoint : /*curFacetPDPoints*/projCurFacetPDPoints)
+			for (const auto& adPoint :
+				//curFacetPDPoints
+				projCurFacetPDPoints
+				)
 			{
 				out << "v " << adPoint.transpose() << std::endl;
 			}
+			/*for (const auto& adPoint : projCurFacetPDPoints)
+			{
+				out << "v " << adPoint.transpose() << std::endl;
+			}*/
 
 			// 输出Apollonius Diagram中的所有边
 			for (const auto& vertIdxPair : curFacetPDLines)
@@ -696,56 +715,56 @@ namespace core
 			//LOG::qpSplit();
 		}
 
-		// 将边上的点统一按逆时针排序
-		struct DirSort {
-			PowerDiagramPoint_3 edgeBaseVert;
-			Vector3 edgeDir;
-			DirSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
-
-			bool operator()(const std::pair<PowerDiagramPoint_3, int>& lhs, const std::pair<PowerDiagramPoint_3, int>& rhs)
-			{
-				return ((lhs.first - edgeBaseVert).dot(edgeDir) < (rhs.first - edgeBaseVert).dot(edgeDir));
-			}
-		};
-		const auto& mEdgeVec = this->getMEdgeVec();
-		std::vector<std::pair<std::pair<PowerDiagramPoint_3, int>, std::pair<PowerDiagramPoint_3, int>>> groupEdgePoint;
-		for (auto& edge_face_point : edgeToPointsInNeighFace)
-		{
-			if (edge_face_point.second.size() < 2) continue;
-			if (edge_face_point.second.size() != 2) { LOG::qpError("Non-manifold edge!"); continue; }
-
-			const int mEdgeIdx = edge_face_point.first;
-			const auto mEdgeVerts = mEdgeVec[mEdgeIdx]->verts();
-			const Vector3 mEdgeDir = (mEdgeVerts.second->pos - mEdgeVerts.first->pos).normalized();
-			const auto baseVert = mEdgeVerts.first->pos;
-
-			DirSort dirSort(baseVert, mEdgeDir);
-
-			int idx = 0;
-			std::array<int, 2> edgeNeighFace;
-			for (auto& face_point : edge_face_point.second)
-			{
-				edgeNeighFace[idx++] = face_point.first;
-				std::sort(face_point.second.begin(), face_point.second.end(), dirSort);
-			}
-
-			for (int j = 0; j < edge_face_point.second.at(edgeNeighFace[0]).size(); ++j)
-			{
-				auto p1 = edge_face_point.second.at(edgeNeighFace[0])[j];
-				auto p2 = edge_face_point.second.at(edgeNeighFace[1])[j];
-				if ((p1.first - baseVert).dot(mEdgeDir) > (p2.first - baseVert).dot(mEdgeDir)) std::swap(p1, p2);
-				groupEdgePoint.emplace_back(p1, p2);
-				out << "l " << p1.second << " " << p2.second << std::endl;
-			}
-
-			if (groupEdgePoint.size() >= 2)
-				for (int i = 0; i < groupEdgePoint.size() - 1; ++i)
-				{
-					if (scalarFunc.grad(groupEdgePoint[i].second.first).normalized().
-						isApprox(scalarFunc.grad(groupEdgePoint[i + 1].first.first).normalized()))
-						out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
-				}
-		}
+		//// 将边上的点统一按逆时针排序
+		//struct DirSort {
+		//	PowerDiagramPoint_3 edgeBaseVert;
+		//	Vector3 edgeDir;
+		//	DirSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
+		//
+		//	bool operator()(const std::pair<PowerDiagramPoint_3, int>& lhs, const std::pair<PowerDiagramPoint_3, int>& rhs)
+		//	{
+		//		return ((lhs.first - edgeBaseVert).dot(edgeDir) < (rhs.first - edgeBaseVert).dot(edgeDir));
+		//	}
+		//};
+		//const auto& mEdgeVec = this->getMEdgeVec();
+		//std::vector<std::pair<std::pair<PowerDiagramPoint_3, int>, std::pair<PowerDiagramPoint_3, int>>> groupEdgePoint;
+		//for (auto& edge_face_point : edgeToPointsInNeighFace)
+		//{
+		//	if (edge_face_point.second.size() < 2) continue;
+		//	if (edge_face_point.second.size() != 2) { LOG::qpError("Non-manifold edge!"); continue; }
+		//
+		//	const int mEdgeIdx = edge_face_point.first;
+		//	const auto mEdgeVerts = mEdgeVec[mEdgeIdx]->verts();
+		//	const Vector3 mEdgeDir = (mEdgeVerts.second->pos - mEdgeVerts.first->pos).normalized();
+		//	const auto baseVert = mEdgeVerts.first->pos;
+		//
+		//	DirSort dirSort(baseVert, mEdgeDir);
+		//
+		//	int idx = 0;
+		//	std::array<int, 2> edgeNeighFace;
+		//	for (auto& face_point : edge_face_point.second)
+		//	{
+		//		edgeNeighFace[idx++] = face_point.first;
+		//		std::sort(face_point.second.begin(), face_point.second.end(), dirSort);
+		//	}
+		//
+		//	for (int j = 0; j < edge_face_point.second.at(edgeNeighFace[0]).size(); ++j)
+		//	{
+		//		auto p1 = edge_face_point.second.at(edgeNeighFace[0])[j];
+		//		auto p2 = edge_face_point.second.at(edgeNeighFace[1])[j];
+		//		if ((p1.first - baseVert).dot(mEdgeDir) > (p2.first - baseVert).dot(mEdgeDir)) std::swap(p1, p2);
+		//		groupEdgePoint.emplace_back(p1, p2);
+		//		out << "l " << p1.second << " " << p2.second << std::endl;
+		//	}
+		//
+		//	if (groupEdgePoint.size() >= 2)
+		//		for (int i = 0; i < groupEdgePoint.size() - 1; ++i)
+		//		{
+		//			if (scalarFunc.grad(groupEdgePoint[i].second.first).normalized().
+		//				isApprox(scalarFunc.grad(groupEdgePoint[i + 1].first.first).normalized()))
+		//				out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
+		//		}
+		//}
 	}
 
 	/* Visualization */
