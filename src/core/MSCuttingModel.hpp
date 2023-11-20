@@ -100,9 +100,13 @@ namespace core
 
 	private:
 		/* Data */
+		int m_numSamplesPerEdge;
 		int numSamplesPerEdge;  // 每条边固定的采样数量 TODO：后期不可能固定
 
 		std::vector<CELL_TYPE> meshVertsType;
+
+		std::vector<Vector3> singulars;
+		double singularEpsilon = 0.5;
 
 		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
 
@@ -130,7 +134,7 @@ namespace core
 
 		MSCuttingModel(const std::string& filename, const std::string& norm_out_file, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
 			PolyMesh(filename, norm_out_file), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
-			samplePoints.reserve(_numSamples * numMeshEdges);
+			samplePoints.reserve(numSamplesPerEdge * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			meshVertsType.resize(numMeshVerts);
@@ -139,9 +143,13 @@ namespace core
 			pdAdaptor = PowerDiagramAdaptor();
 		}
 
-		MSCuttingModel(const std::string& filename, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
-			PolyMesh(filename), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
-			samplePoints.reserve(_numSamples * numMeshEdges);
+		MSCuttingModel(const std::string& filename,
+			const ScalarFunc& _scalarFunc, const std::vector<Vector3>& _singulars,
+			int _m_numSamples, int _n_numSamples) noexcept :
+			PolyMesh(filename), scalarFunc(_scalarFunc), singulars(_singulars),
+			m_numSamplesPerEdge(_m_numSamples), numSamplesPerEdge(_n_numSamples)
+		{
+			samplePoints.reserve(numSamplesPerEdge * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			meshVertsType.resize(numMeshVerts);
@@ -202,7 +210,7 @@ namespace core
 		/* Methods for Our Algorithm */
 		int samplePointPerEdge();
 
-		void computeApolloniusGraph(std::ofstream& out);
+		void computePowerDiagram(std::ofstream& out);
 
 	private:
 		/* Visualization */

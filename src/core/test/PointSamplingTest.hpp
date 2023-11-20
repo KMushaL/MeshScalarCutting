@@ -9,14 +9,15 @@ namespace unit_test
 	using namespace core;
 	using ScalarFunc = core::MSCuttingModel::ScalarFunc;
 
-	inline bool testSamplingPoint(const std::string& mesh_file, const ScalarFunc& func, int numSamples)
+	inline bool testSamplingPoint(const std::string& mesh_file, const ScalarFunc& func, int m_numSamples, int numSamples)
 	{
-		if (numSamples <= 0)
+		if (numSamples < 0)
 		{
-			LOG::qpTest("The number of sample points must larger than 0!");
+			LOG::qpTest("The number of sample points must be larger than 0!");
 			return false;
 		}
-		MSCuttingModel mscModel(mesh_file, func, numSamples);
+		std::vector<Vector3> singulars;
+		MSCuttingModel mscModel(mesh_file, func, singulars, m_numSamples, numSamples);
 		mscModel.meshNorm();
 
 		const std::string vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, (std::string)"sample.obj");

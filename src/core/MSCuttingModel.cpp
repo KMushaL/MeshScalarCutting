@@ -205,13 +205,13 @@ namespace core
 	/* Post-processing */
 	std::vector<MSCuttingModel::PowerDiagramPoint_3>
 		MSCuttingModel::postProcessFacetPoints(const int faceIdx,
-			const std::vector<PowerDiagramPoint_3>& curFacetADPoints,
+			const std::vector<PowerDiagramPoint_3>& curFacetPDPoints,
 			const std::map<PowerDiagramPoint_3, int>& pdPointToOutIdx,
 			std::array<std::vector<PowerDiagramPoint_3>, 3>& edgePoints,
 			std::map<PowerDiagramPoint_3, int>& edgePointToIdx,
 			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>& edgeToPointsInNeighFace)
 	{
-		int numADPoints = curFacetADPoints.size();
+		int numADPoints = curFacetPDPoints.size();
 		std::vector<PowerDiagramPoint_3> resPoints(numADPoints);
 
 		// aabb initialization
@@ -249,7 +249,7 @@ namespace core
 
 #pragma omp parallel for
 		for (int i = 0; i < numADPoints; ++i) {
-			const PowerDiagramPoint_3 originalADPoint = curFacetADPoints[i];
+			const PowerDiagramPoint_3 originalPDPoint = curFacetPDPoints[i];
 
 			// 判断点是否在边上
 			int onEdgeIdx = -1;
@@ -258,9 +258,9 @@ namespace core
 				const Vector3 v1 = triVerts[triEdges[i].first]->pos;
 
 				// TODO: Exact Predicates
-				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalADPoint - v1).normalized()).norm() < 1e-9) {
+				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalPDPoint - v1).normalized()).norm() < 1e-9) {
 					onEdgeIdx = i;
-					globalOutIdx = pdPointToOutIdx.at(originalADPoint);
+					globalOutIdx = pdPointToOutIdx.at(originalPDPoint);
 					break;
 				}
 			}
@@ -268,12 +268,12 @@ namespace core
 			VectorX tri_sqrD; VectorXi tri_I; MatrixX tri_C; MatrixX projQ(1, 3);
 
 			// for computing projection point
-			PowerDiagramPoint_3 lastPoint = originalADPoint;
+			PowerDiagramPoint_3 lastPoint = originalPDPoint;
 			PowerDiagramPoint_3 projPoint;
 			Scalar lastVal; Vector3 lastGrad; double alpha;
 
 			int iter = 0;
-			while (iter < 10) {
+			while (iter < 1500) {
 				lastVal = scalarFunc.val(lastPoint);
 				if (std::fabs(lastVal) < 1e-9)
 				{
@@ -281,9 +281,15 @@ namespace core
 					break;
 				}
 
-				++iter;
 				lastGrad = scalarFunc.grad(lastPoint);
+				if (std::isinf(lastGrad.norm()) || std::isnan(lastGrad.norm()) ||
+					std::fabs(lastGrad.norm()) < 1e-20)
+				{
+					projPoint = lastPoint;
+					break;
+				}
 
+				++iter;
 				alpha = -lastVal / (lastGrad.squaredNorm() + 1e-6);
 
 				// project to triangle
@@ -555,12 +561,22 @@ namespace core
 	*/
 	int MSCuttingModel::samplePointPerEdge()
 	{
-		if (numSamplesPerEdge < 0)
+		//if (m_numSamplesPerEdge < 0)
+		//{
+		//	m_numSamplesPerEdge = 0;
+		//	LOG::qpWarn("The number of sample points for each edge is smaller than 0, no samples will on edge.");
+		//	//return 0;
+		//}
+		if (numSamplesPerEdge < 1)
 		{
-			numSamplesPerEdge = 0;
-			LOG::qpWarn("The number of sample points is smaller than 0, no samples will on edge.");
-			//return 0;
+			numSamplesPerEdge = 1;
+			LOG::qpWarn("The number of sample points for each facet is smaller than 1.");
 		}
+		/*if (numSamplesPerEdge > m_numSamplesPerEdge)
+		{
+			numSamplesPerEdge = m_numSamplesPerEdge;
+			LOG::qpWarn("The number of sample points for each face is smaller than each edge.");
+		}*/
 
 		using Point3 = typename HEVert::Point3; // 其实就是Eigen::Vector3
 		using EdgeDir = typename Vector3;
@@ -579,84 +595,216 @@ namespace core
 			const Point3 vert_2 = mEdge->secondVertex()->pos;
 			// 关联的两个(或一个)面
 			int facet_1 = -1, facet_2 = -1;
-			if (!mEdge->halfEdge()->isBoundary())
-				facet_1 = mEdge->halfEdge()->boundFace()->index;
-			if (!mEdge->halfEdge()->oppoHEdge()->isBoundary())
-				facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
+			if (!mEdge->halfEdge()->isBoundary()) facet_1 = mEdge->halfEdge()->boundFace()->index;
+			if (!mEdge->halfEdge()->oppoHEdge()->isBoundary()) facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
+
+			/*std::multimap<double, SamplePoint> lessZeroPoints;
+			std::multimap<double, SamplePoint> largeZeroPoints;*/
 
 			const EdgeDir edgeDir = vert_2 - vert_1;
-
-			Point3 preSamplePointPos = vert_1;
-			Scalar preSamplePointVal = scalarFunc.val(vert_1);
-			SamplePoint preSamplePoint(preSamplePointPos, mEdge->index, preSamplePointVal);
-
-			int preInsertedIdx = -1;
 			//bool preIsLargeZero = (preSamplePointVal > 0);
 			for (int k = -1; k < numSamplesPerEdge + 1; ++k) // +1 是为了涵盖另一个端点vert_2
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
-				/*std::cout << "curSamplePointPos = " << curSamplePointPos.transpose() << std::endl;
-				system("pause");*/
+				int s = 0;
+				for (s; s < singulars.size(); ++s)
+					if ((curSamplePointPos - singulars[s]).norm() <= singularEpsilon) break;
+				if (s != singulars.size()) continue;
 
 				// 计算当前采样点的值
+				Vector3 curSamplePointGrad = scalarFunc.grad(curSamplePointPos);
+				if (std::isnan(curSamplePointGrad(0)) ||
+					std::isnan(curSamplePointGrad(1)) ||
+					std::isnan(curSamplePointGrad(2)) ||
+					curSamplePointGrad.norm() < 1e-9) continue;
 				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
-
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
-				//bool curIsLargeZero = (curSamplePointVal > 0); // TODO: = 0 的情况该怎么处理？判断是不是切点
-				//if (curIsLargeZero ^ preIsLargeZero)
+				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
+				std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
+
+				if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
 				{
-					/*if (preInsertedIdx != k - 1 || k == 0) validSamplePoints.emplace_back(preSamplePoint);
-					validSamplePoints.emplace_back(curSamplePoint);*/
-
-					/*std::cout << "preSamplePoint = " << preSamplePointPos.transpose() << " val = " << preSamplePointVal << "\n";
-					std::cout << "curSamplePoint = " << curSamplePointPos.transpose() << " val = " << curSamplePointVal << "\n";
-					LOG::qpSplit();*/
-
-					// push结果
-					if (facet_1 != -1)
-					{
-						if (!sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
-						{
-							sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
-							sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
-						}
-						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_1].aroundSamplePoints.emplace_back(preSamplePoint);
-					}
-					if (facet_2 != -1)
-					{
-						if (!sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
-						{
-							sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
-							sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
-						}
-						///*if (preInsertedIdx != k - 1 || k == 0) */sampleFacets[facet_2].aroundSamplePoints.emplace_back(preSamplePoint);
-					}
-
-					preInsertedIdx = k;
+					sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
+					sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
+				}
+				if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
+				{
+					sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
+					sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
 				}
 
-				/*preSamplePointPos = curSamplePointPos;
-				preIsLargeZero = curIsLargeZero;
-				preSamplePoint = curSamplePoint;*/
+				if (!samplePointSet.count(curSamplePointPos))
+				{
+					samplePointSet.insert(curSamplePointPos);
+					samplePoints.emplace_back(curSamplePoint);
+				}
 
-				if (samplePointSet.count(curSamplePointPos)) continue;
-				samplePointSet.insert(curSamplePointPos);
-				samplePoints.emplace_back(curSamplePoint);
+				/*if (curSamplePointVal < 0) lessZeroPoints.insert(std::make_pair(std::fabs(curSamplePointVal), curSamplePoint));
+				else if (curSamplePointVal > 0) largeZeroPoints.insert(std::make_pair(curSamplePointVal, curSamplePoint));
+				else continue;*/
 			}
+
+			//int num = 0;
+			//auto iter_1 = lessZeroPoints.begin();
+			//auto iter_2 = largeZeroPoints.begin();
+			//while (num < numSamplesPerEdge)
+			//{
+			//	if (iter_1 != lessZeroPoints.end())
+			//	{
+			//		Point3 curSamplePointPos = (iter_1->second).pos;
+			//		if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
+			//		{
+			//			sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
+			//			sampleFacets[facet_1].aroundSamplePoints.emplace_back(iter_1->second);
+			//		}
+			//		if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
+			//		{
+			//			sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
+			//			sampleFacets[facet_2].aroundSamplePoints.emplace_back(iter_1->second);
+			//		}
+			//
+			//		// 用于可视化
+			//		if (!samplePointSet.count(curSamplePointPos))
+			//		{
+			//			samplePointSet.insert(curSamplePointPos);
+			//			samplePoints.emplace_back(iter_1->second);
+			//		}
+			//
+			//		++iter_1; ++num;
+			//	}
+			//
+			//	if (num >= numSamplesPerEdge) break;
+			//
+			//	if (iter_2 != largeZeroPoints.end())
+			//	{
+			//		Point3 curSamplePointPos = (iter_2->second).pos;
+			//		if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
+			//		{
+			//			sampleFacets[facet_1].aroundSamplePoints.emplace_back(iter_2->second);
+			//			sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
+			//		}
+			//		if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
+			//		{
+			//			sampleFacets[facet_2].aroundSamplePoints.emplace_back(iter_2->second);
+			//			sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
+			//		}
+			//
+			//		if (!samplePointSet.count(curSamplePointPos))
+			//		{
+			//			samplePointSet.insert(curSamplePointPos);
+			//			samplePoints.emplace_back(iter_2->second);
+			//		}
+			//
+			//		++iter_2; ++num;
+			//		/*Point3 curSamplePointPos = (iter_2->second).pos;
+			//		if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
+			//		{
+			//			sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
+			//			sampleFacets[i].aroundSamplePoints.emplace_back(iter_2->second);
+			//			++iter_2; ++num;
+			//
+			//			if (!samplePointSet.count(curSamplePointPos))
+			//			{
+			//				samplePointSet.insert(curSamplePointPos);
+			//				samplePoints.emplace_back(iter_2->second);
+			//			}
+			//		}*/
+			//	}
+			//	system("pause");
+			//	if (iter_1 == lessZeroPoints.end() && iter_2 == largeZeroPoints.end()) break;
+			//}
 		}
 
-		//assert(samplePoints.size() == (numSamplesPerEdge * modelEdges.size()));
+		//// 对每条边计算numSamplesPerEdge个采样点
+		//const auto faceVec = this->getFaceVec();
+		//for (int i = 0; i < numMeshFaces; ++i)
+		//{
+		//	const auto face = faceVec[i];
+		//	const auto hEdge = face->halfEdge();
+		//	auto _hEdge = hEdge;
+		//
+		//	std::unordered_map<double, SamplePoint> lessZeroPoints[3];
+		//	std::unordered_map<double, SamplePoint> largeZeroPoints[3];
+		//	int edgeIdx = 0;
+		//
+		//	do {
+		//		const Point3 vert_1 = _hEdge->froVertex()->pos;
+		//		const Point3 vert_2 = _hEdge->nextVertex()->pos;
+		//
+		//		const EdgeDir edgeDir = vert_2 - vert_1;
+		//
+		//		for (int k = 0; k < m_numSamplesPerEdge; ++k)
+		//		{
+		//			// 计算采样点位置
+		//			Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
+		//			// 计算当前采样点的值
+		//			Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
+		//			SamplePoint curSamplePoint(curSamplePointPos, _hEdge->mEdge()->index, curSamplePointVal);
+		//
+		//			if (curSamplePointVal < 0) lessZeroPoints[edgeIdx].insert(std::make_pair(std::fabs(curSamplePointVal), curSamplePoint));
+		//			else if (curSamplePointVal > 0) largeZeroPoints[edgeIdx].insert(std::make_pair(curSamplePointVal, curSamplePoint));
+		//			else continue;
+		//		}
+		//
+		//		_hEdge = _hEdge->nextHEdge();
+		//		++edgeIdx;
+		//	} while (_hEdge != hEdge);
+		//
+		//	int num = 0;
+		//	for (int j = 0; j < 3; ++j)
+		//	{
+		//		auto iter_1 = lessZeroPoints[j].begin();
+		//		auto iter_2 = largeZeroPoints[j].begin();
+		//		while (num < numSamplesPerEdge)
+		//		{
+		//			if (iter_1 != lessZeroPoints[j].end())
+		//			{
+		//				Point3 curSamplePointPos = (iter_1->second).pos;
+		//				if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
+		//				{
+		//					sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
+		//					sampleFacets[i].aroundSamplePoints.emplace_back(iter_1->second);
+		//					++iter_1; ++num;
+		//
+		//					if (!samplePointSet.count(curSamplePointPos))
+		//					{
+		//						samplePointSet.insert(curSamplePointPos);
+		//						samplePoints.emplace_back(iter_1->second);
+		//					}
+		//				}
+		//			}
+		//			if (num >= numSamplesPerEdge) break;
+		//
+		//			if (iter_2 != largeZeroPoints[j].end())
+		//			{
+		//				Point3 curSamplePointPos = (iter_2->second).pos;
+		//				if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
+		//				{
+		//					sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
+		//					sampleFacets[i].aroundSamplePoints.emplace_back(iter_2->second);
+		//					++iter_2; ++num;
+		//
+		//					if (!samplePointSet.count(curSamplePointPos))
+		//					{
+		//						samplePointSet.insert(curSamplePointPos);
+		//						samplePoints.emplace_back(iter_2->second);
+		//					}
+		//				}
+		//			}
+		//		}
+		//	}
+		//}
 
 		return samplePoints.size();
 	}
 
 	/**
-	* @brief: 计算Apollonius Graph(对所有采样面)
+	* @brief: 计算Power Diagram(对所有采样面)
 	* @param out: 输出流
 	*/
-	void MSCuttingModel::computeApolloniusGraph(std::ofstream& out)
+	void MSCuttingModel::computePowerDiagram(std::ofstream& out)
 	{
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
 		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
@@ -695,8 +843,8 @@ namespace core
 
 			// 输出Apollonius Diagram中的所有全局坐标点
 			for (const auto& adPoint :
-				//curFacetPDPoints
-				projCurFacetPDPoints
+				curFacetPDPoints
+				//projCurFacetPDPoints
 				)
 			{
 				out << "v " << adPoint.transpose() << std::endl;
@@ -866,7 +1014,7 @@ namespace core
 		sample_vis_out.close();
 
 		LOG::qpInfo("Output Isoline to ", std::quoted(ad_vis_file), " ...");
-		computeApolloniusGraph(pd_vis_out);
+		computePowerDiagram(pd_vis_out);
 		pd_vis_out.close();
 
 		bool cut = (!insideMeshVisFile.empty() && !outsideMeshVisFile.empty()) ? true : false;

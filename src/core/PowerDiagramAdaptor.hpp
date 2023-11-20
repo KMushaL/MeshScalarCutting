@@ -196,8 +196,8 @@ namespace core
 				const double f_val_1 = sites[siteToIdx[site_1]].f_val;
 				const double f_val_2 = sites[siteToIdx[site_2]].f_val;
 
-				bool isLargeZero_1 = (f_val_1 > 1e-9); // TODO; 等于0的情况
-				bool isLargeZero_2 = (f_val_1 > 1e-9);
+				/*bool isLargeZero_1 = (f_val_1 > 1e-9); // TODO; 等于0的情况
+				bool isLargeZero_2 = (f_val_2 > 1e-9);
 				bool isEqualZero_1 = (std::fabs(f_val_1) < 1e-9);
 				bool isEqualZero_2 = (std::fabs(f_val_2) < 1e-9);
 				// 除去都等于0的情况，只要一个等于0或者二者异号就会保留
@@ -206,13 +206,16 @@ namespace core
 				{
 					CGAL::Object o = rt.dual(eit);
 					vor.crop_and_extract_segment(o);
-				}
+				}*/
 
+				bool isLargeZero_1 = (f_val_1 > 0);
+				bool isLargeZero_2 = (f_val_2 > 0);
 				//if (isLargeZero_1 ^ isLargeZero_2)
-				/*{
+				{
 					CGAL::Object o = rt.dual(eit);
 					vor.crop_and_extract_segment(o);
-				}*/
+				}
+
 				//print the cropped Voronoi diagram edges as segments
 				/*std::copy(vor.m_cropped_vd.begin(), vor.m_cropped_vd.end(),
 					std::ostream_iterator<Segment_2>(std::cout, "\n"));
