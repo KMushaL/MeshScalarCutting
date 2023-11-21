@@ -25,7 +25,7 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 	//return Eigen::Vector3d(1, -1, 0);
 	//return 2 * Eigen::Vector3d((p.x() + 1), p.y(), p.z());
 	//return 2 * Eigen::Vector3d(p.x(), p.y(), p.z());
-	return (4.0 / 9) * Eigen::Vector3d(std::pow(p.x() * p.x(), -1.0 / 6), std::pow(p.y() * p.y(), -1.0 / 6), 0);
+	return (4.0 / 9) * Eigen::Vector3d(std::pow(std::fabs(p.x()), -1.0 / 3) * (p.x() < 0 ? -1 : 1), std::pow(std::fabs(p.y()), -1.0 / 3) * (p.y() < 0 ? -1 : 1), 0);
 }
 
 int main(int argc, char** argv)
@@ -39,8 +39,8 @@ int main(int argc, char** argv)
 	app.add_option("-f,--file", modelArg,
 		"Input model's name with extension.")/*->required()*/;
 
-	int m_numSamplePoints = 4;
-	int n_numSamplePoints = 2;
+	int m_numSamplePoints = 8;
+	int n_numSamplePoints = 4;
 	app.add_option("-m", m_numSamplePoints,
 		"Specify the number of sample points at each edge of input model.");
 	app.add_option("-n", n_numSamplePoints,

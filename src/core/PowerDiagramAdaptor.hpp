@@ -210,7 +210,7 @@ namespace core
 
 				bool isLargeZero_1 = (f_val_1 > 0);
 				bool isLargeZero_2 = (f_val_2 > 0);
-				//if (isLargeZero_1 ^ isLargeZero_2)
+				if (isLargeZero_1 ^ isLargeZero_2)
 				{
 					CGAL::Object o = rt.dual(eit);
 					vor.crop_and_extract_segment(o);

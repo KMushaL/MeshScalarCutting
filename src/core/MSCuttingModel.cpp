@@ -205,14 +205,14 @@ namespace core
 	/* Post-processing */
 	std::vector<MSCuttingModel::PowerDiagramPoint_3>
 		MSCuttingModel::postProcessFacetPoints(const int faceIdx,
-			const std::vector<PowerDiagramPoint_3>& curFacetPDPoints,
+			const std::vector<std::vector<PowerDiagramPoint_3>>& facetPDPoints,
 			const std::map<PowerDiagramPoint_3, int>& pdPointToOutIdx,
 			std::array<std::vector<PowerDiagramPoint_3>, 3>& edgePoints,
 			std::map<PowerDiagramPoint_3, int>& edgePointToIdx,
 			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>& edgeToPointsInNeighFace)
 	{
-		int numADPoints = curFacetPDPoints.size();
-		std::vector<PowerDiagramPoint_3> resPoints(numADPoints);
+		int numPDPoints = facetPDPoints[faceIdx].size();
+		std::vector<PowerDiagramPoint_3> resPoints(numPDPoints);
 
 		// aabb initialization
 		igl::AABB<MatrixX, 3> tri_aabb;
@@ -229,7 +229,16 @@ namespace core
 		const auto hEdge = this->getFaceVec()[faceIdx]->halfEdge();
 		std::array<int, 3> faceEdgeIdx;
 		auto _hEdge = hEdge;
-		for (int i = 0; i < 3; ++i) { faceEdgeIdx[i] = _hEdge->mEdge()->index; _hEdge = _hEdge->nextHEdge(); }
+		std::array<bool, 3> isConsistencyOnEdge = { false, false, false };
+		for (int i = 0; i < 3; ++i) {
+			// 邻居面没有PD经过，则不需要使用投影梯度法
+			if (_hEdge->oppoHEdge()->isBoundary() ||
+				facetPDPoints[_hEdge->oppoHEdge()->boundFace()->index].empty())
+				isConsistencyOnEdge[i] = true;
+
+			faceEdgeIdx[i] = _hEdge->mEdge()->index;
+			_hEdge = _hEdge->nextHEdge();
+		}
 
 		const std::array<VertIdx, 3> triEdges = {
 			VertIdx(0, 1),
@@ -247,9 +256,9 @@ namespace core
 		_hEdge = hEdge;
 		for (int i = 0; i < 3; ++i) { triEdgesDir[i] = _hEdge->dir().normalized(); _hEdge = _hEdge->nextHEdge(); }*/
 
-#pragma omp parallel for
-		for (int i = 0; i < numADPoints; ++i) {
-			const PowerDiagramPoint_3 originalPDPoint = curFacetPDPoints[i];
+		//#pragma omp parallel for
+		for (int i = 0; i < numPDPoints; ++i) {
+			const PowerDiagramPoint_3 originalPDPoint = facetPDPoints[faceIdx][i];
 
 			// 判断点是否在边上
 			int onEdgeIdx = -1;
@@ -258,7 +267,8 @@ namespace core
 				const Vector3 v1 = triVerts[triEdges[i].first]->pos;
 
 				// TODO: Exact Predicates
-				if (onEdgeIdx == -1 && triEdgesDir[i].cross((originalPDPoint - v1).normalized()).norm() < 1e-9) {
+				if (!isConsistencyOnEdge[i] &&
+					onEdgeIdx == -1 && triEdgesDir[i].cross((originalPDPoint - v1).normalized()).norm() < 1e-9) {
 					onEdgeIdx = i;
 					globalOutIdx = pdPointToOutIdx.at(originalPDPoint);
 					break;
@@ -272,8 +282,10 @@ namespace core
 			PowerDiagramPoint_3 projPoint;
 			Scalar lastVal; Vector3 lastGrad; double alpha;
 
+			//std::ofstream grad_out(R"(E:\VSProjects\MeshScalarCutting\vis\test2d_star\4\grad.xyz)");
+
 			int iter = 0;
-			while (iter < 1500) {
+			while (iter < 10) {
 				lastVal = scalarFunc.val(lastPoint);
 				if (std::fabs(lastVal) < 1e-9)
 				{
@@ -282,6 +294,7 @@ namespace core
 				}
 
 				lastGrad = scalarFunc.grad(lastPoint);
+
 				if (std::isinf(lastGrad.norm()) || std::isnan(lastGrad.norm()) ||
 					std::fabs(lastGrad.norm()) < 1e-20)
 				{
@@ -291,6 +304,8 @@ namespace core
 
 				++iter;
 				alpha = -lastVal / (lastGrad.squaredNorm() + 1e-6);
+				//grad_out << lastPoint.transpose() << " " << lastGrad.transpose() << std::endl;
+				//std::cout << "lastPos: " << lastPoint.transpose() << ", lastGrad: " << lastGrad.transpose() << ", alpha = " << alpha << std::endl;
 
 				// project to triangle
 				if (onEdgeIdx == -1)
@@ -622,7 +637,8 @@ namespace core
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
 				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
-				std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
+				if (alpha >= alphaEpsilon) continue;
+				//std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
 
 				if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
 				{
@@ -809,19 +825,24 @@ namespace core
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
 		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
 		std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>> edgeToPointsInNeighFace; // 保存边到其关联的两个face的所有存在该条边上点的映射
+
+		// 保存当前面的PowerDiagram顶点的信息
+		std::vector<std::vector<PowerDiagramPoint_3>> facetPDPoints(numMeshFaces);
+		//LOG::qpInfo("#facet ", i);
+
+		// 保存当前面的PowerDiagram边的信息(通过顶点的输出索引进行存储)
+		std::vector<std::vector<std::pair<int, int>> > facetPDLines(numMeshFaces);
+		std::vector<std::unordered_map<int, std::vector<int>> > edgeTable(numMeshFaces); // 保存该面power diagram点的邻边表
+
 		//for (int i = 8; i < 9; ++i)
 		for (int i = 0; i < numMeshFaces; ++i)
 		{
-			// 保存当前面的PowerDiagram顶点的信息
-			std::vector<PowerDiagramPoint_3> curFacetPDPoints;
-			//LOG::qpInfo("#facet ", i);
-
-			// 保存当前面的PowerDiagram边的信息(通过顶点的输出索引进行存储)
-			std::vector<std::pair<int, int>> curFacetPDLines;
-			std::unordered_map<int, std::vector<int>> edgeTable; // 保存该面power diagram点的邻边表
-			computePDForFacet(i, globalOutVertIdx, curFacetPDPoints, curFacetPDLines, edgeTable, pdPointToOutIdx);
+			computePDForFacet(i, globalOutVertIdx, facetPDPoints[i], facetPDLines[i], edgeTable[i], pdPointToOutIdx);
 			//LOG::qpInfo("-- Compute coarse power diagram is finished!\n");
+		}
 
+		for (int i = 0; i < numMeshFaces; ++i)
+		{
 			//if (i == 2173)
 			//{
 			//	/*for (const auto& point : curFacetADPoints)
@@ -834,28 +855,24 @@ namespace core
 			std::array<std::vector<PowerDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
 			std::map<PowerDiagramPoint_3, int> isoEdgePointToIdx; // 保存边上的(后处理过的)点到edgeTable索引的映射
 			const std::vector<PowerDiagramPoint_3>& projCurFacetPDPoints =
-				postProcessFacetPoints(i, curFacetPDPoints, pdPointToOutIdx, isoEdgePoints, isoEdgePointToIdx, edgeToPointsInNeighFace);
+				postProcessFacetPoints(i, facetPDPoints, pdPointToOutIdx, isoEdgePoints, isoEdgePointToIdx, edgeToPointsInNeighFace);
 			//LOG::qpInfo("-- Post-processing is finished!\n");
 
 			// 计算CDT
 			//const std::vector<CellTriangle>& cdt_res = computeCDTForFacet(i, projCurFacetADPoints, edgeTable, isoEdgePoints, isoEdgePointToIdx);
 			//LOG::qpInfo("-- Cutting is finished!\n");
 
-			// 输出Apollonius Diagram中的所有全局坐标点
+			// 输出Power Diagram中的所有全局坐标点
 			for (const auto& adPoint :
-				curFacetPDPoints
-				//projCurFacetPDPoints
+				//facetPDPoints[i]
+				projCurFacetPDPoints
 				)
 			{
 				out << "v " << adPoint.transpose() << std::endl;
 			}
-			/*for (const auto& adPoint : projCurFacetPDPoints)
-			{
-				out << "v " << adPoint.transpose() << std::endl;
-			}*/
 
-			// 输出Apollonius Diagram中的所有边
-			for (const auto& vertIdxPair : curFacetPDLines)
+			// 输出Power Diagram中的所有边
+			for (const auto& vertIdxPair : facetPDLines[i])
 			{
 				out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
 			}

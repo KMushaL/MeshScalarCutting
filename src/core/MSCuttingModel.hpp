@@ -106,7 +106,8 @@ namespace core
 		std::vector<CELL_TYPE> meshVertsType;
 
 		std::vector<Vector3> singulars;
-		double singularEpsilon = 0.5;
+		constexpr static double singularEpsilon = 0.5;
+		constexpr static double alphaEpsilon = 1;
 
 		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
 
@@ -193,7 +194,7 @@ namespace core
 
 		static constexpr double PROJ_EPSILON = 1e-6;
 		std::vector<PowerDiagramPoint_3> postProcessFacetPoints(int faceIdx,
-			const std::vector<PowerDiagramPoint_3>&,
+			const std::vector<std::vector<PowerDiagramPoint_3>>&,
 			const std::map<PowerDiagramPoint_3, int>&,
 			std::array<std::vector<PowerDiagramPoint_3>, 3>&,
 			std::map<PowerDiagramPoint_3, int>&,
