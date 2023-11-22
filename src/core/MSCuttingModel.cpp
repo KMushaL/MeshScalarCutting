@@ -340,13 +340,13 @@ namespace core
 
 			resPoints[i] = projPoint;
 
-			//			// TODO: 将去重工作移到外面，提升并行效率
-			//#pragma omp critical
+			//			//			// TODO: 将去重工作移到外面，提升并行效率
+			////#pragma omp critical
 			//			{
 			//				// 目前对后处理后的所有点做了一个去重工作
-			//				if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
+			//				//if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
 			//				{
-			//					resPoints.emplace_back(projPoint);
+			//					resPoints[i] = projPoint;
 			//					if (onEdgeIdx != -1)
 			//					{
 			//						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
@@ -598,7 +598,7 @@ namespace core
 
 		// 获得所有model edge
 		const auto& modelEdges = this->getMEdgeVec();
-		int numSplits = numSamplesPerEdge + 1;
+		int numSplits = numSamplesPerEdge - 1;
 
 		std::set<Point3> samplePointSet;
 
@@ -618,7 +618,7 @@ namespace core
 
 			const EdgeDir edgeDir = vert_2 - vert_1;
 			//bool preIsLargeZero = (preSamplePointVal > 0);
-			for (int k = -1; k < numSamplesPerEdge + 1; ++k) // +1 是为了涵盖另一个端点vert_2
+			for (int k = -1; k < numSamplesPerEdge - 2; ++k) // +1 是为了涵盖另一个端点vert_2
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
@@ -637,6 +637,8 @@ namespace core
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
 				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
+				std::cout << "pos = " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
+				system("pause");
 				if (alpha >= alphaEpsilon) continue;
 				//std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
 
