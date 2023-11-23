@@ -70,16 +70,98 @@ namespace core
 			Vector3 f_grad = scalarFunc.grad(sampleVert_dim3);
 
 			site.f_val = f_val;
+
 			/*site.weight = abs(-f_val / f_grad.norm()) * 0.9*/;
 			//std::cout << "sample = " << sampleVert_dim3.transpose() << ", val = " << f_val << ", f_grad.norm = " << f_grad.norm() << std::endl;
 			if (f_grad.isApprox(Vector3(0, 0, 0), 1e-9)) site.weight = 0;
 			else
 			{
-				double _weight = f_val / (f_grad.norm() + 1e-6);
-				site.weight = _weight * _weight/* * 1.1*/;
+				if (std::fabs(f_val) < 1e-9) { site.weight = .0; continue; }
+
+				// Save the function value at the current x
+				Scalar fx = 0.5 * f_val * f_val;
+				Vector3 grad = f_val * f_grad;
+				Vector3 drt = -grad;
+				double step = 1.0 / (grad.norm()); // 初始步长
+
+				const double ftol = 1e-4;
+				const double wolfe = 0.9;
+
+				// Projection of gradient on the search direction
+				const Scalar fx_init = fx;
+				Scalar dg_init = grad.dot(drt); // < 0
+				Scalar test_decr = ftol * dg_init; // 保证test_decr < 0
+
+				// Upper and lower end of the current line search range
+				Scalar step_lo = 0,
+					step_hi = std::numeric_limits<Scalar>::infinity();
+				Scalar min_step = Scalar(1e-20);
+				Scalar max_step = Scalar(1e+20);
+
+				int max_linesearch = 5;
+				Vector3 xp = sampleVert_dim3;
+				for (int iter = 0; iter < max_linesearch; ++iter)
+				{
+					// x_{k+1} = x_k + step * d_k
+					Vector3 x = xp + step * drt;
+					// Evaluate this candidate
+					double t_val = scalarFunc.val(x);
+					Vector3 t_grad = scalarFunc.grad(x);
+					fx = 0.5 * t_val * t_val;
+					grad = t_val * t_grad;
+
+					if (fx > fx_init + step * test_decr || (fx != fx))
+					{
+						step_hi = step;
+					}
+					else
+					{
+						// Armijo condition is met
+						break;
+
+						//Scalar dg = grad.dot(drt);
+						//
+						//if (dg < wolfe * dg_init)
+						//{
+						//	step_lo = step;
+						//}
+						//else
+						//{
+						//	// Regular Wolfe condition is met
+						//	//break;
+						//
+						//	if (dg > -wolfe * dg_init)
+						//	{
+						//		step_hi = step;
+						//	}
+						//	else
+						//	{
+						//		// Strong Wolfe condition is met
+						//		break;
+						//	}
+						//}
+					}
+
+					assert(step_lo < step_hi);
+
+					if (step < min_step)
+						throw std::runtime_error("the line search step became smaller than the minimum value allowed");
+
+					if (step > max_step)
+						throw std::runtime_error("the line search step became larger than the maximum value allowed");
+
+					// continue search in mid of current search range
+					step = std::isinf(step_hi) ? 2 * step : step_lo / 2 + step_hi / 2;
+				}
+				//double _weight = f_val / (f_grad.norm() + 1e-6);
+				//site.weight = _weight * _weight/* * 1.1*/;
+				site.weight = step * f_val * step * f_val * f_grad.squaredNorm();
 			}
 
-			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
+			double _weight = f_val / (f_grad.norm() + 1e-6);
+			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
+			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight_pre = " << _weight * _weight << std::endl;
+			system("pause");
 
 			curSampleFacet.sites.emplace_back(site);
 		}
@@ -637,9 +719,9 @@ namespace core
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
 				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
-				std::cout << "pos = " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
-				system("pause");
-				if (alpha >= alphaEpsilon) continue;
+				/*std::cout << "pos = " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
+				system("pause");*/
+				//if (alpha >= alphaEpsilon) continue;
 				//std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
 
 				if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
