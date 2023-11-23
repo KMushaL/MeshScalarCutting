@@ -8,6 +8,7 @@
 NAMESPACE_BEGIN(mscut)
 namespace core
 {
+	std::ofstream info_out(R"(E:\VSProjects\MeshScalarCutting\vis\test2d_star\4\info.obj)");
 	/* Details */
 	/**
 	* @param facetIdx: 待转换面的索引
@@ -56,6 +57,103 @@ namespace core
 			facetBoundary.push_back(site.pos);
 		}
 
+		auto lineSearch = [&](const Vector3& x_p, const Vector3& grad_p, const Vector3& drt, const double& f_val,
+			Vector3& x, Vector3& grad_x, double& f_x)
+			{
+				double step = 1e-1 * 1.0 / (grad_p.norm()); // 初始步长
+
+				const double ftol = 1e-4;
+				const double wolfe = 0.9;
+
+				// Projection of gradient on the search direction
+				const Scalar f_x_init = f_val;
+				const Vector3 grad_x_init = grad_p;
+				Scalar dg_init = grad_p.dot(drt); // < 0
+				Scalar test_decr = ftol * dg_init; // 保证test_decr < 0
+
+				// Upper and lower end of the current line search range
+				Scalar step_lo = 0,
+					step_hi = std::numeric_limits<Scalar>::infinity();
+				Scalar min_step = Scalar(1e-20);
+				Scalar max_step = Scalar(1e+20);
+
+				int max_linesearch = 5;
+				const Vector3 xp = x;
+				for (int iter = 0; iter < max_linesearch; ++iter)
+				{
+					//std::cout << "iter = " << iter << std::endl;
+					// x_{k+1} = x_k + step * d_k
+					x = xp + step * drt;
+					// Evaluate this candidate
+					f_x = 0.5 * scalarFunc.val(x) * scalarFunc.val(x);
+					grad_x = f_x * scalarFunc.grad(x);
+
+					if (std::isinf(grad_x(0)) || std::isinf(grad_x(1)) || std::isinf(grad_x(2)) ||
+						std::isnan(grad_x(0)) || std::isnan(grad_x(1)) || std::isnan(grad_x(2)))
+					{
+						if (iter == max_linesearch - 1)
+						{
+							x = xp;
+							f_x = f_x_init;
+							grad_x = grad_x_init;
+						}
+						continue;
+					}
+					/*double t_f_x = f_x;
+					Vector3 t_grad_x = grad_x;
+					if (f_val < 0)
+					{
+						t_f_x = -t_f_x;
+						t_grad_x = -t_grad_x;
+					}*/
+
+					if (f_x > f_x_init + step * test_decr || (f_x != f_x))
+					{
+						step_hi = step;
+					}
+					else
+					{
+						// Armijo condition is met
+						//break;
+
+						Scalar dg = grad_x.dot(drt);
+
+						if (dg < wolfe * dg_init)
+						{
+							step_lo = step;
+						}
+						else
+						{
+							// Regular Wolfe condition is met
+							//break;
+
+							if (dg > -wolfe * dg_init)
+							{
+								step_hi = step;
+							}
+							else
+							{
+								// Strong Wolfe condition is met
+								break;
+							}
+						}
+					}
+
+					assert(step_lo < step_hi);
+
+					if (step < min_step) break;
+					//throw std::runtime_error("the line search step became smaller than the minimum value allowed");
+
+					if (step > max_step) break;
+					//throw std::runtime_error("the line search step became larger than the maximum value allowed");
+
+				// continue search in mid of current search range
+					step = std::isinf(step_hi) ? 2 * step : step_lo / 2 + step_hi / 2;
+				}
+
+				return step;
+			};
+
 		// 计算所有采样点的局部坐标
 		for (int i = 0; i < aroundSamplePoints.size(); ++i)
 		{
@@ -76,90 +174,127 @@ namespace core
 			if (f_grad.isApprox(Vector3(0, 0, 0), 1e-9)) site.weight = 0;
 			else
 			{
-				if (std::fabs(f_val) < 1e-9) { site.weight = .0; continue; }
-
-				// Save the function value at the current x
-				Scalar fx = 0.5 * f_val * f_val;
-				Vector3 grad = f_val * f_grad;
-				Vector3 drt = -grad;
-				double step = 1.0 / (grad.norm()); // 初始步长
-
-				const double ftol = 1e-4;
-				const double wolfe = 0.9;
-
-				// Projection of gradient on the search direction
-				const Scalar fx_init = fx;
-				Scalar dg_init = grad.dot(drt); // < 0
-				Scalar test_decr = ftol * dg_init; // 保证test_decr < 0
-
-				// Upper and lower end of the current line search range
-				Scalar step_lo = 0,
-					step_hi = std::numeric_limits<Scalar>::infinity();
-				Scalar min_step = Scalar(1e-20);
-				Scalar max_step = Scalar(1e+20);
-
-				int max_linesearch = 5;
-				Vector3 xp = sampleVert_dim3;
-				for (int iter = 0; iter < max_linesearch; ++iter)
-				{
-					// x_{k+1} = x_k + step * d_k
-					Vector3 x = xp + step * drt;
-					// Evaluate this candidate
-					double t_val = scalarFunc.val(x);
-					Vector3 t_grad = scalarFunc.grad(x);
-					fx = 0.5 * t_val * t_val;
-					grad = t_val * t_grad;
-
-					if (fx > fx_init + step * test_decr || (fx != fx))
-					{
-						step_hi = step;
-					}
-					else
-					{
-						// Armijo condition is met
-						break;
-
-						//Scalar dg = grad.dot(drt);
-						//
-						//if (dg < wolfe * dg_init)
-						//{
-						//	step_lo = step;
-						//}
-						//else
-						//{
-						//	// Regular Wolfe condition is met
-						//	//break;
-						//
-						//	if (dg > -wolfe * dg_init)
-						//	{
-						//		step_hi = step;
-						//	}
-						//	else
-						//	{
-						//		// Strong Wolfe condition is met
-						//		break;
-						//	}
-						//}
-					}
-
-					assert(step_lo < step_hi);
-
-					if (step < min_step)
-						throw std::runtime_error("the line search step became smaller than the minimum value allowed");
-
-					if (step > max_step)
-						throw std::runtime_error("the line search step became larger than the maximum value allowed");
-
-					// continue search in mid of current search range
-					step = std::isinf(step_hi) ? 2 * step : step_lo / 2 + step_hi / 2;
+				if (f_val == 0) {
+					site.weight = .0;
+					info_out << "v " << sampleVert_dim3(0) << " " << sampleVert_dim3(1) << " " << site.weight << "\n";
+					continue;
 				}
-				//double _weight = f_val / (f_grad.norm() + 1e-6);
-				//site.weight = _weight * _weight/* * 1.1*/;
-				site.weight = step * f_val * step * f_val * f_grad.squaredNorm();
+
+#define HESSIAN 1
+#if HESSIAN
+				/*Eigen::Vector2d sampleVert_ = sampleVert_dim3.head<2>();
+				Eigen::Vector2d f_grad_ = f_grad.head<2>();
+				double u = f_grad_.squaredNorm();
+				double v = f_grad_.transpose() * scalarFunc.hessian_2(sampleVert_) * f_grad_;
+				double t = u * u - 2 * v * f_val;
+				if (t < 0) { std::cout << "error\n"; exit(1); }
+				double alpha_1 = (-u - std::sqrt(t)) / v;
+				double alpha_2 = (-u + std::sqrt(t)) / v;
+				if (f_val > 0) site.weight = (alpha_1 * f_grad_).squaredNorm();
+				else site.weight = (alpha_2 * f_grad_).squaredNorm();*/
+#else
+				Vector3 x = sampleVert_dim3;
+				Vector3 last_x = x;
+
+				double g_x = 0.5 * f_val * f_val;
+				double last_g_x = g_x;
+
+				Vector3 grad_x = f_val * f_grad;
+				Vector3 last_grad_x = grad_x;
+
+				Vector3 drt = -grad_x;
+				int iter = 1;
+				while (iter <= 20)
+				{
+					/*if (std::isinf(last_grad_x(0)) || std::isinf(last_grad_x(1)) || std::isinf(last_grad_x(2)) ||
+						std::isnan(last_grad_x(0)) || std::isnan(last_grad_x(1)) || std::isnan(last_grad_x(2)))
+					{
+						last_x = x + Vector3(0.1, 0.1, 0);
+						last_grad_x = scalarFunc.val(x) * scalarFunc.grad(x);
+						drt = -last_grad_x;
+					}*/
+
+					//std::cout << "last x = " << last_x.transpose() << "last g_x = " << last_g_x << std::endl;
+					double step = lineSearch(last_x, last_grad_x, drt, last_g_x, x, grad_x, g_x);
+
+					grad_x = scalarFunc.val(x) * scalarFunc.grad(x);
+
+					//std::cout << 0.5 * scalarFunc.val(x) * scalarFunc.val(x) << std::endl;
+					//
+					//std::cout << "x = " << x.transpose() << "g_x = " << g_x << std::endl;
+					//std::cout << (last_grad_x - grad_x).norm() << std::endl;
+					//system("pause");
+
+					if ((last_grad_x - grad_x).norm() < 1e-6) break;
+
+					last_x = x;
+					last_grad_x = grad_x;
+					last_g_x = g_x;
+
+					drt = -last_grad_x;
+
+					++iter;
+				}
+				site.weight = (x - sampleVert_dim3).squaredNorm();
+
+#endif // HESSIAN
+
+				//Vector3 x = sampleVert_dim3;
+				//Vector3 last_x = x;
+				//
+				//double f_x = f_val;
+				//double last_f_x = f_x;
+				//
+				//bool last_large_zero = (f_val > 0);
+				//
+				//Vector3 grad_x = f_grad;
+				//if (f_val < 0) grad_x = -grad_x;
+				//Vector3 last_grad_x = grad_x;
+				//
+				//Vector3 drt = -f_grad;
+				//Vector3 last_drt = drt;
+				//while (true)
+				//{
+				//	std::cout << "last x = " << last_x.transpose() << "last f_x = " << last_f_x << std::endl;
+				//	double step = lineSearch(last_x, grad_x, drt, last_f_x, x, grad_x, f_x);
+				//
+				//	std::cout << scalarFunc.val(x) << std::endl;
+				//
+				//	//std::cout << "pos: " << sampleVert_dim3.transpose() << ", step = " << step << ", f_grad = " << f_grad.transpose() << std::endl;
+				//	std::cout << "x = " << x.transpose() << "f_x = " << f_x << std::endl;
+				//	system("pause");
+				//
+				//	if ((last_grad_x - grad_x).norm() < 1e-9) break;
+				//
+				//	last_x = x;
+				//	//if (f_x < 0) f_x = -f_x, grad_x = -grad_x;
+				//	last_grad_x = grad_x;
+				//	last_f_x = f_x;
+				//
+				//	bool large_zero = (f_x > 0);
+				//	/*if (large_zero ^ last_large_zero)
+				//	{
+				//		drt = -last_drt;
+				//		std::cout << "111\n";
+				//	}
+				//	else drt = last_drt;*/
+				//	if (f_x > 0) drt = -last_grad_x;
+				//	else drt = last_grad_x;
+				//
+				//	last_drt = drt;
+				//	last_large_zero = large_zero;
+				//
+				//	/*if (last_grad_x.dot(init_grad) > 0)
+				//		drt = -init_grad * (last_grad_x.dot(init_grad));
+				//	else
+				//		drt = init_grad * (last_grad_x.dot(init_grad));*/
+				//}
+
 			}
 
 			double _weight = f_val / (f_grad.norm() + 1e-6);
 			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
+			info_out << "v " << sampleVert_dim3(0) << " " << sampleVert_dim3(1) << " " << site.weight << "\n";
 			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight_pre = " << _weight * _weight << std::endl;
 			system("pause");
 
@@ -422,7 +557,7 @@ namespace core
 
 			resPoints[i] = projPoint;
 
-			//			//			// TODO: 将去重工作移到外面，提升并行效率
+			//// TODO: 将去重工作移到外面，提升并行效率
 			////#pragma omp critical
 			//			{
 			//				// 目前对后处理后的所有点做了一个去重工作
@@ -680,7 +815,7 @@ namespace core
 
 		// 获得所有model edge
 		const auto& modelEdges = this->getMEdgeVec();
-		int numSplits = numSamplesPerEdge - 1;
+		int numSplits = numSamplesPerEdge - 1/* + 1*/;
 
 		std::set<Point3> samplePointSet;
 
@@ -700,7 +835,7 @@ namespace core
 
 			const EdgeDir edgeDir = vert_2 - vert_1;
 			//bool preIsLargeZero = (preSamplePointVal > 0);
-			for (int k = -1; k < numSamplesPerEdge - 2; ++k) // +1 是为了涵盖另一个端点vert_2
+			for (int k = -1; k < numSamplesPerEdge - 1; ++k) // +1 是为了涵盖另一个端点vert_2
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
@@ -711,15 +846,14 @@ namespace core
 
 				// 计算当前采样点的值
 				Vector3 curSamplePointGrad = scalarFunc.grad(curSamplePointPos);
-				if (std::isnan(curSamplePointGrad(0)) ||
-					std::isnan(curSamplePointGrad(1)) ||
-					std::isnan(curSamplePointGrad(2)) ||
+				if (std::isinf(curSamplePointGrad(0)) || std::isinf(curSamplePointGrad(1)) || std::isinf(curSamplePointGrad(2)) ||
+					std::isnan(curSamplePointGrad(0)) || std::isnan(curSamplePointGrad(1)) || std::isnan(curSamplePointGrad(2)) ||
 					curSamplePointGrad.norm() < 1e-9) continue;
 				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
 				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
 
 				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
-				/*std::cout << "pos = " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
+				/*std::cout << "pos = " << curSamplePointPos.transpose() << ", grad = " << curSamplePointGrad.transpose() << ", alpha = " << alpha << std::endl;
 				system("pause");*/
 				//if (alpha >= alphaEpsilon) continue;
 				//std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;

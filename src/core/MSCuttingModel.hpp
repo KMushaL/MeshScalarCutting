@@ -36,10 +36,14 @@ namespace core
 
 		using ScalarValFunc = std::function<Scalar(const PowerDiagramPoint_3&)>;
 		using GradFunc = std::function<Eigen::Vector3d(const PowerDiagramPoint_3&)>;
+		using HessianFunc = std::function<Eigen::Matrix3d(const PowerDiagramPoint_3&)>;
+		using HessianFunc_2 = std::function<Eigen::Matrix2d(const Eigen::Vector2d&)>;
 
 		struct ScalarFunc {
 			ScalarValFunc val;
 			GradFunc grad;
+			HessianFunc hessian;
+			HessianFunc_2 hessian_2;
 		};
 
 		enum class CELL_TYPE {
