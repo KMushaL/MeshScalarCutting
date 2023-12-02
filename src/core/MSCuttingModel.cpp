@@ -4,13 +4,91 @@
 #include <map>
 #include <fstream>
 #include <igl/AABB.h>
+#include <utils/Donut.hpp>
 
 NAMESPACE_BEGIN(mscut)
 namespace core
 {
-	std::ofstream info_out(R"(E:\VSProjects\MeshScalarCutting\vis\test2d_star\4\info.obj)");
-	/* Details */
+	///////////////////////
+	// Algorithm Details //
+	///////////////////////
 	/**
+	* @brief: 对mesh每条边进行固定数量的采样
+	* @return: 采样点数量
+	*/
+	int MSCuttingModel::samplePointPerEdge()
+	{
+		if (numSamplesPerEdge < 1)
+		{
+			numSamplesPerEdge = 1;
+			LOG::qpWarn("The number of sample points for each facet is smaller than zero.");
+		}
+
+		using Point3 = typename HEVert::Point3; // 其实就是Eigen::Vector3
+		using EdgeDir = typename Vector3;
+
+		// 获得所有model edge
+		const auto& modelEdges = this->getMEdgeVec();
+		int numSplits = numSamplesPerEdge - 1/* + 1*/;
+
+		std::set<Point3> samplePointSet;
+
+		// 对每条边计算numSamplesPerEdge个采样点
+		for (const auto& mEdge : modelEdges)
+		{
+			// 两个端点坐标
+			const Point3 vert_1 = mEdge->firstVertex()->pos;
+			const Point3 vert_2 = mEdge->secondVertex()->pos;
+
+			// 关联的两个(或一个)面
+			int facet_1 = -1, facet_2 = -1;
+			if (!mEdge->halfEdge()->isBoundary()) facet_1 = mEdge->halfEdge()->boundFace()->index;
+			if (!mEdge->halfEdge()->oppoHEdge()->isBoundary()) facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
+
+			const EdgeDir edgeDir = vert_2 - vert_1;
+			for (int k = -1; k < numSamplesPerEdge - 1; ++k) // +1 是为了涵盖另一个端点vert_2
+			{
+				// 计算采样点位置
+				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
+				int s = 0;
+				for (s; s < singulars.size(); ++s)
+					if ((curSamplePointPos - singulars[s]).norm() <= SINGULAR_DIS_EPSILON) break;
+				if (s != singulars.size()) continue;
+
+				// 计算当前采样点的值
+				Vector3 curSamplePointGrad = scalarFunc.grad(curSamplePointPos);
+				if (std::isinf(curSamplePointGrad(0)) || std::isinf(curSamplePointGrad(1)) || std::isinf(curSamplePointGrad(2)) ||
+					std::isnan(curSamplePointGrad(0)) || std::isnan(curSamplePointGrad(1)) || std::isnan(curSamplePointGrad(2)) ||
+					curSamplePointGrad.norm() < 1e-9) continue;
+				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
+				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
+
+				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
+
+				if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
+				{
+					sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
+					sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
+				}
+				if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
+				{
+					sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
+					sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
+				}
+
+				if (!samplePointSet.count(curSamplePointPos))
+				{
+					samplePointSet.insert(curSamplePointPos);
+					samplePoints.emplace_back(curSamplePoint);
+				}
+			}
+		}
+
+		return samplePoints.size();
+	}
+
+	/**
+	* @brief: 对单个面计算局部的二维坐标以及权重
 	* @param facetIdx: 待转换面的索引
 	* @param facetBoundary: 待转换面边界(在函数体内被更新)
 	* @return: 站点数量
@@ -169,30 +247,15 @@ namespace core
 
 			site.f_val = f_val;
 
-			/*site.weight = abs(-f_val / f_grad.norm()) * 0.9*/;
-			//std::cout << "sample = " << sampleVert_dim3.transpose() << ", val = " << f_val << ", f_grad.norm = " << f_grad.norm() << std::endl;
 			if (f_grad.isApprox(Vector3(0, 0, 0), 1e-9)) site.weight = 0;
 			else
 			{
-				if (f_val == 0) {
+				/*if (f_val == 0) {
 					site.weight = .0;
 					info_out << "v " << sampleVert_dim3(0) << " " << sampleVert_dim3(1) << " " << site.weight << "\n";
 					continue;
-				}
+				}*/
 
-#define HESSIAN 1
-#if HESSIAN
-				/*Eigen::Vector2d sampleVert_ = sampleVert_dim3.head<2>();
-				Eigen::Vector2d f_grad_ = f_grad.head<2>();
-				double u = f_grad_.squaredNorm();
-				double v = f_grad_.transpose() * scalarFunc.hessian_2(sampleVert_) * f_grad_;
-				double t = u * u - 2 * v * f_val;
-				if (t < 0) { std::cout << "error\n"; exit(1); }
-				double alpha_1 = (-u - std::sqrt(t)) / v;
-				double alpha_2 = (-u + std::sqrt(t)) / v;
-				if (f_val > 0) site.weight = (alpha_1 * f_grad_).squaredNorm();
-				else site.weight = (alpha_2 * f_grad_).squaredNorm();*/
-#else
 				Vector3 x = sampleVert_dim3;
 				Vector3 last_x = x;
 
@@ -204,27 +267,11 @@ namespace core
 
 				Vector3 drt = -grad_x;
 				int iter = 1;
-				while (iter <= 20)
+				while (iter <= WEIGHT_MAX_ITER)
 				{
-					/*if (std::isinf(last_grad_x(0)) || std::isinf(last_grad_x(1)) || std::isinf(last_grad_x(2)) ||
-						std::isnan(last_grad_x(0)) || std::isnan(last_grad_x(1)) || std::isnan(last_grad_x(2)))
-					{
-						last_x = x + Vector3(0.1, 0.1, 0);
-						last_grad_x = scalarFunc.val(x) * scalarFunc.grad(x);
-						drt = -last_grad_x;
-					}*/
-
-					//std::cout << "last x = " << last_x.transpose() << "last g_x = " << last_g_x << std::endl;
 					double step = lineSearch(last_x, last_grad_x, drt, last_g_x, x, grad_x, g_x);
 
 					grad_x = scalarFunc.val(x) * scalarFunc.grad(x);
-
-					//std::cout << 0.5 * scalarFunc.val(x) * scalarFunc.val(x) << std::endl;
-					//
-					//std::cout << "x = " << x.transpose() << "g_x = " << g_x << std::endl;
-					//std::cout << (last_grad_x - grad_x).norm() << std::endl;
-					//system("pause");
-
 					if ((last_grad_x - grad_x).norm() < 1e-6) break;
 
 					last_x = x;
@@ -236,67 +283,10 @@ namespace core
 					++iter;
 				}
 				site.weight = (x - sampleVert_dim3).squaredNorm();
-
-#endif // HESSIAN
-
-				//Vector3 x = sampleVert_dim3;
-				//Vector3 last_x = x;
-				//
-				//double f_x = f_val;
-				//double last_f_x = f_x;
-				//
-				//bool last_large_zero = (f_val > 0);
-				//
-				//Vector3 grad_x = f_grad;
-				//if (f_val < 0) grad_x = -grad_x;
-				//Vector3 last_grad_x = grad_x;
-				//
-				//Vector3 drt = -f_grad;
-				//Vector3 last_drt = drt;
-				//while (true)
-				//{
-				//	std::cout << "last x = " << last_x.transpose() << "last f_x = " << last_f_x << std::endl;
-				//	double step = lineSearch(last_x, grad_x, drt, last_f_x, x, grad_x, f_x);
-				//
-				//	std::cout << scalarFunc.val(x) << std::endl;
-				//
-				//	//std::cout << "pos: " << sampleVert_dim3.transpose() << ", step = " << step << ", f_grad = " << f_grad.transpose() << std::endl;
-				//	std::cout << "x = " << x.transpose() << "f_x = " << f_x << std::endl;
-				//	system("pause");
-				//
-				//	if ((last_grad_x - grad_x).norm() < 1e-9) break;
-				//
-				//	last_x = x;
-				//	//if (f_x < 0) f_x = -f_x, grad_x = -grad_x;
-				//	last_grad_x = grad_x;
-				//	last_f_x = f_x;
-				//
-				//	bool large_zero = (f_x > 0);
-				//	/*if (large_zero ^ last_large_zero)
-				//	{
-				//		drt = -last_drt;
-				//		std::cout << "111\n";
-				//	}
-				//	else drt = last_drt;*/
-				//	if (f_x > 0) drt = -last_grad_x;
-				//	else drt = last_grad_x;
-				//
-				//	last_drt = drt;
-				//	last_large_zero = large_zero;
-				//
-				//	/*if (last_grad_x.dot(init_grad) > 0)
-				//		drt = -init_grad * (last_grad_x.dot(init_grad));
-				//	else
-				//		drt = init_grad * (last_grad_x.dot(init_grad));*/
-				//}
-
 			}
 
-			double _weight = f_val / (f_grad.norm() + 1e-6);
-			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
-			info_out << "v " << sampleVert_dim3(0) << " " << sampleVert_dim3(1) << " " << site.weight << "\n";
-			std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight_pre = " << _weight * _weight << std::endl;
-			system("pause");
+			//std::cout << "pos: " << sampleVert_dim3.transpose() << ", weight = " << site.weight << std::endl;
+			//info_out << "v " << sampleVert_dim3(0) << " " << sampleVert_dim3(1) << " " << site.weight << "\n";
 
 			curSampleFacet.sites.emplace_back(site);
 		}
@@ -331,9 +321,9 @@ namespace core
 	}
 
 	/**
-	* brief: 为facetIdx这个面计算Apollonius Diagram
+	* @brief: 为facetIdx这个面计算Power Diagram
 	* @param facetIdx: 面的索引
-	* @return: Apollonius Diagram边的数量
+	* @return: Power Diagram边的数量
 	*/
 	int MSCuttingModel::computePDForFacet(int facetIdx,
 		int& globalOutVertIdx,
@@ -352,8 +342,7 @@ namespace core
 		Polygon_2 facetBoundary;
 		updateFacetLocalCoord(facetIdx, facetBoundary);
 
-		// 计算Apollonius Diagram
-		//auto adLineSegmentList = agAdaptor.computeAGForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
+		// 计算Power Diagram
 		auto adLineSegmentList = pdAdaptor.computePDForBoundary(sampleFacets[facetIdx].sites, facetBoundary);
 
 		if (adLineSegmentList.empty())
@@ -367,11 +356,7 @@ namespace core
 				verts.emplace_back(aroundVerts[i]->pos);
 				vertIdx.emplace_back(meshVertIdx + i);
 			}
-			/*for (auto it = aroundVerts.begin(); it != aroundVerts.end(); ++it)
-			{
-				verts.emplace_back((*it)->pos);
-				vertIdx.emplace_back(meshVertIdx + it - aroundVerts.begin());
-			}*/
+
 			if (type == CELL_TYPE::INSIDE) insideMeshVertIdx += verts.size(), insideMesh.emplace_back(verts, vertIdx);
 			else if (type == CELL_TYPE::OUTSIDE) outsideMeshVertIdx += verts.size(), outsideMesh.emplace_back(verts, vertIdx);
 
@@ -462,16 +447,12 @@ namespace core
 			VertIdx(1, 2),
 			VertIdx(2, 0)
 		};
-		//for (int i = 0; i < 3; ++i) { triEdges[i] = VertIdx(hEdge->froVertex()->index, hEdge->nextVertex()->index); _hEdge = _hEdge->nextHEdge(); }
 		const auto mEdgeVec = this->getMEdgeVec();
 		const std::array<Vector3, 3> triEdgesDir = {
 			(triVerts[1]->pos - triVerts[0]->pos).normalized(),
 			(triVerts[2]->pos - triVerts[1]->pos).normalized(),
 			(triVerts[0]->pos - triVerts[2]->pos).normalized()
 		};
-		/*std::array<Vector3, 3> triEdgesDir;
-		_hEdge = hEdge;
-		for (int i = 0; i < 3; ++i) { triEdgesDir[i] = _hEdge->dir().normalized(); _hEdge = _hEdge->nextHEdge(); }*/
 
 		//#pragma omp parallel for
 		for (int i = 0; i < numPDPoints; ++i) {
@@ -496,15 +477,13 @@ namespace core
 
 			// for computing projection point
 			PowerDiagramPoint_3 lastPoint = originalPDPoint;
-			PowerDiagramPoint_3 projPoint;
+			PowerDiagramPoint_3 projPoint = lastPoint;
 			Scalar lastVal; Vector3 lastGrad; double alpha;
 
-			//std::ofstream grad_out(R"(E:\VSProjects\MeshScalarCutting\vis\test2d_star\4\grad.xyz)");
-
 			int iter = 0;
-			while (iter < 10) {
+			while (iter < POST_PROCESSING_MAX_ITER) {
 				lastVal = scalarFunc.val(lastPoint);
-				if (std::fabs(lastVal) < 1e-9)
+				if (std::fabs(lastVal) < NUMERICAL_EPSILON)
 				{
 					projPoint = lastPoint;
 					break;
@@ -513,7 +492,7 @@ namespace core
 				lastGrad = scalarFunc.grad(lastPoint);
 
 				if (std::isinf(lastGrad.norm()) || std::isnan(lastGrad.norm()) ||
-					std::fabs(lastGrad.norm()) < 1e-20)
+					std::fabs(lastGrad.norm()) < NUMERICAL_EPSILON)
 				{
 					projPoint = lastPoint;
 					break;
@@ -521,8 +500,6 @@ namespace core
 
 				++iter;
 				alpha = -lastVal / (lastGrad.squaredNorm() + 1e-6);
-				//grad_out << lastPoint.transpose() << " " << lastGrad.transpose() << std::endl;
-				//std::cout << "lastPos: " << lastPoint.transpose() << ", lastGrad: " << lastGrad.transpose() << ", alpha = " << alpha << std::endl;
 
 				// project to triangle
 				if (onEdgeIdx == -1)
@@ -551,30 +528,33 @@ namespace core
 					projPoint = proj_grad + lastPoint;
 				}
 
-				if ((projPoint - lastPoint).norm() < PROJ_EPSILON) break;
+				if ((projPoint - lastPoint).norm() < PROJECT_EPSILON) break;
 				else lastPoint = projPoint;
 			}
 
 			resPoints[i] = projPoint;
 
-			//// TODO: 将去重工作移到外面，提升并行效率
-			////#pragma omp critical
-			//			{
-			//				// 目前对后处理后的所有点做了一个去重工作
-			//				//if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
-			//				{
-			//					resPoints[i] = projPoint;
-			//					if (onEdgeIdx != -1)
-			//					{
-			//						edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
-			//						edgePoints[onEdgeIdx].emplace_back(projPoint);
-			//						edgeToPointsInNeighFace[faceEdgeIdx[onEdgeIdx]][faceIdx].emplace_back(projPoint, globalOutIdx);
-			//					}
-			//				}
-			//
-			//				/*if (i <= 50) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
-			//				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");*/
-			//			}
+			// TODO: 将去重工作移到外面，提升并行效率
+//#pragma omp critical
+			{
+				// 目前对后处理后的所有点做了一个去重工作
+				//if (edgePointToIdx.find(projPoint) == edgePointToIdx.end())
+				{
+					//resPoints[i] = projPoint;
+					if (onEdgeIdx != -1)
+					{
+						// 用于连接相邻面的等值线
+						edgeToPointsInNeighFace[faceEdgeIdx[onEdgeIdx]][faceIdx].emplace_back(projPoint, globalOutIdx);
+
+						//// 用于构建CDT，目前用不到先注释掉
+						//edgePoints[onEdgeIdx].emplace_back(projPoint);
+						//edgePointToIdx[projPoint] = i; // 得到该边界点在哪条边上的信息以及在edgeTable中的索引
+					}
+				}
+
+				/*if (i <= 50) LOG::qpInfo("#i = ", i, ", went ", iter, " iterations.");
+				else LOG::qpWarn("#i = ", i, ", went ", iter, " iterations.");*/
+			}
 		}
 
 		//// 将边上的点统一按逆时针排序
@@ -786,259 +766,14 @@ namespace core
 		return facetAllCDTs;
 	}
 
-	/* Methods for Our Algorithm */
+	///////////////////////
+	//  Algorithm  Core  //
+	///////////////////////
 	/**
-	* @brief: 对mesh每条边进行固定数量的采样
-	* @return: 采样点数量
+	* @brief: 对采样点计算Isoline
+	* @param out: 输出流，保存Isoline结果
 	*/
-	int MSCuttingModel::samplePointPerEdge()
-	{
-		//if (m_numSamplesPerEdge < 0)
-		//{
-		//	m_numSamplesPerEdge = 0;
-		//	LOG::qpWarn("The number of sample points for each edge is smaller than 0, no samples will on edge.");
-		//	//return 0;
-		//}
-		if (numSamplesPerEdge < 1)
-		{
-			numSamplesPerEdge = 1;
-			LOG::qpWarn("The number of sample points for each facet is smaller than 1.");
-		}
-		/*if (numSamplesPerEdge > m_numSamplesPerEdge)
-		{
-			numSamplesPerEdge = m_numSamplesPerEdge;
-			LOG::qpWarn("The number of sample points for each face is smaller than each edge.");
-		}*/
-
-		using Point3 = typename HEVert::Point3; // 其实就是Eigen::Vector3
-		using EdgeDir = typename Vector3;
-
-		// 获得所有model edge
-		const auto& modelEdges = this->getMEdgeVec();
-		int numSplits = numSamplesPerEdge - 1/* + 1*/;
-
-		std::set<Point3> samplePointSet;
-
-		// 对每条边计算numSamplesPerEdge个采样点
-		for (const auto& mEdge : modelEdges)
-		{
-			// 两个端点坐标
-			const Point3 vert_1 = mEdge->firstVertex()->pos;
-			const Point3 vert_2 = mEdge->secondVertex()->pos;
-			// 关联的两个(或一个)面
-			int facet_1 = -1, facet_2 = -1;
-			if (!mEdge->halfEdge()->isBoundary()) facet_1 = mEdge->halfEdge()->boundFace()->index;
-			if (!mEdge->halfEdge()->oppoHEdge()->isBoundary()) facet_2 = mEdge->halfEdge()->oppoHEdge()->boundFace()->index;
-
-			/*std::multimap<double, SamplePoint> lessZeroPoints;
-			std::multimap<double, SamplePoint> largeZeroPoints;*/
-
-			const EdgeDir edgeDir = vert_2 - vert_1;
-			//bool preIsLargeZero = (preSamplePointVal > 0);
-			for (int k = -1; k < numSamplesPerEdge - 1; ++k) // +1 是为了涵盖另一个端点vert_2
-			{
-				// 计算采样点位置
-				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
-				int s = 0;
-				for (s; s < singulars.size(); ++s)
-					if ((curSamplePointPos - singulars[s]).norm() <= singularEpsilon) break;
-				if (s != singulars.size()) continue;
-
-				// 计算当前采样点的值
-				Vector3 curSamplePointGrad = scalarFunc.grad(curSamplePointPos);
-				if (std::isinf(curSamplePointGrad(0)) || std::isinf(curSamplePointGrad(1)) || std::isinf(curSamplePointGrad(2)) ||
-					std::isnan(curSamplePointGrad(0)) || std::isnan(curSamplePointGrad(1)) || std::isnan(curSamplePointGrad(2)) ||
-					curSamplePointGrad.norm() < 1e-9) continue;
-				Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
-				SamplePoint curSamplePoint(curSamplePointPos, mEdge->index, curSamplePointVal);
-
-				double alpha = std::fabs(curSamplePointVal / (curSamplePointGrad.squaredNorm()));
-				/*std::cout << "pos = " << curSamplePointPos.transpose() << ", grad = " << curSamplePointGrad.transpose() << ", alpha = " << alpha << std::endl;
-				system("pause");*/
-				//if (alpha >= alphaEpsilon) continue;
-				//std::cout << "pos: " << curSamplePointPos.transpose() << ", alpha = " << alpha << std::endl;
-
-				if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
-				{
-					sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
-					sampleFacets[facet_1].aroundSamplePoints.emplace_back(curSamplePoint);
-				}
-				if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
-				{
-					sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
-					sampleFacets[facet_2].aroundSamplePoints.emplace_back(curSamplePoint);
-				}
-
-				if (!samplePointSet.count(curSamplePointPos))
-				{
-					samplePointSet.insert(curSamplePointPos);
-					samplePoints.emplace_back(curSamplePoint);
-				}
-
-				/*if (curSamplePointVal < 0) lessZeroPoints.insert(std::make_pair(std::fabs(curSamplePointVal), curSamplePoint));
-				else if (curSamplePointVal > 0) largeZeroPoints.insert(std::make_pair(curSamplePointVal, curSamplePoint));
-				else continue;*/
-			}
-
-			//int num = 0;
-			//auto iter_1 = lessZeroPoints.begin();
-			//auto iter_2 = largeZeroPoints.begin();
-			//while (num < numSamplesPerEdge)
-			//{
-			//	if (iter_1 != lessZeroPoints.end())
-			//	{
-			//		Point3 curSamplePointPos = (iter_1->second).pos;
-			//		if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
-			//		{
-			//			sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
-			//			sampleFacets[facet_1].aroundSamplePoints.emplace_back(iter_1->second);
-			//		}
-			//		if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
-			//		{
-			//			sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
-			//			sampleFacets[facet_2].aroundSamplePoints.emplace_back(iter_1->second);
-			//		}
-			//
-			//		// 用于可视化
-			//		if (!samplePointSet.count(curSamplePointPos))
-			//		{
-			//			samplePointSet.insert(curSamplePointPos);
-			//			samplePoints.emplace_back(iter_1->second);
-			//		}
-			//
-			//		++iter_1; ++num;
-			//	}
-			//
-			//	if (num >= numSamplesPerEdge) break;
-			//
-			//	if (iter_2 != largeZeroPoints.end())
-			//	{
-			//		Point3 curSamplePointPos = (iter_2->second).pos;
-			//		if (facet_1 != -1 && !sampleFacets[facet_1].aroundSamplePointsSet.count(curSamplePointPos))
-			//		{
-			//			sampleFacets[facet_1].aroundSamplePoints.emplace_back(iter_2->second);
-			//			sampleFacets[facet_1].aroundSamplePointsSet.insert(curSamplePointPos);
-			//		}
-			//		if (facet_2 != -1 && !sampleFacets[facet_2].aroundSamplePointsSet.count(curSamplePointPos))
-			//		{
-			//			sampleFacets[facet_2].aroundSamplePoints.emplace_back(iter_2->second);
-			//			sampleFacets[facet_2].aroundSamplePointsSet.insert(curSamplePointPos);
-			//		}
-			//
-			//		if (!samplePointSet.count(curSamplePointPos))
-			//		{
-			//			samplePointSet.insert(curSamplePointPos);
-			//			samplePoints.emplace_back(iter_2->second);
-			//		}
-			//
-			//		++iter_2; ++num;
-			//		/*Point3 curSamplePointPos = (iter_2->second).pos;
-			//		if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
-			//		{
-			//			sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
-			//			sampleFacets[i].aroundSamplePoints.emplace_back(iter_2->second);
-			//			++iter_2; ++num;
-			//
-			//			if (!samplePointSet.count(curSamplePointPos))
-			//			{
-			//				samplePointSet.insert(curSamplePointPos);
-			//				samplePoints.emplace_back(iter_2->second);
-			//			}
-			//		}*/
-			//	}
-			//	system("pause");
-			//	if (iter_1 == lessZeroPoints.end() && iter_2 == largeZeroPoints.end()) break;
-			//}
-		}
-
-		//// 对每条边计算numSamplesPerEdge个采样点
-		//const auto faceVec = this->getFaceVec();
-		//for (int i = 0; i < numMeshFaces; ++i)
-		//{
-		//	const auto face = faceVec[i];
-		//	const auto hEdge = face->halfEdge();
-		//	auto _hEdge = hEdge;
-		//
-		//	std::unordered_map<double, SamplePoint> lessZeroPoints[3];
-		//	std::unordered_map<double, SamplePoint> largeZeroPoints[3];
-		//	int edgeIdx = 0;
-		//
-		//	do {
-		//		const Point3 vert_1 = _hEdge->froVertex()->pos;
-		//		const Point3 vert_2 = _hEdge->nextVertex()->pos;
-		//
-		//		const EdgeDir edgeDir = vert_2 - vert_1;
-		//
-		//		for (int k = 0; k < m_numSamplesPerEdge; ++k)
-		//		{
-		//			// 计算采样点位置
-		//			Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
-		//			// 计算当前采样点的值
-		//			Scalar curSamplePointVal = scalarFunc.val(curSamplePointPos);
-		//			SamplePoint curSamplePoint(curSamplePointPos, _hEdge->mEdge()->index, curSamplePointVal);
-		//
-		//			if (curSamplePointVal < 0) lessZeroPoints[edgeIdx].insert(std::make_pair(std::fabs(curSamplePointVal), curSamplePoint));
-		//			else if (curSamplePointVal > 0) largeZeroPoints[edgeIdx].insert(std::make_pair(curSamplePointVal, curSamplePoint));
-		//			else continue;
-		//		}
-		//
-		//		_hEdge = _hEdge->nextHEdge();
-		//		++edgeIdx;
-		//	} while (_hEdge != hEdge);
-		//
-		//	int num = 0;
-		//	for (int j = 0; j < 3; ++j)
-		//	{
-		//		auto iter_1 = lessZeroPoints[j].begin();
-		//		auto iter_2 = largeZeroPoints[j].begin();
-		//		while (num < numSamplesPerEdge)
-		//		{
-		//			if (iter_1 != lessZeroPoints[j].end())
-		//			{
-		//				Point3 curSamplePointPos = (iter_1->second).pos;
-		//				if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
-		//				{
-		//					sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
-		//					sampleFacets[i].aroundSamplePoints.emplace_back(iter_1->second);
-		//					++iter_1; ++num;
-		//
-		//					if (!samplePointSet.count(curSamplePointPos))
-		//					{
-		//						samplePointSet.insert(curSamplePointPos);
-		//						samplePoints.emplace_back(iter_1->second);
-		//					}
-		//				}
-		//			}
-		//			if (num >= numSamplesPerEdge) break;
-		//
-		//			if (iter_2 != largeZeroPoints[j].end())
-		//			{
-		//				Point3 curSamplePointPos = (iter_2->second).pos;
-		//				if (!sampleFacets[i].aroundSamplePointsSet.count(curSamplePointPos))
-		//				{
-		//					sampleFacets[i].aroundSamplePointsSet.insert(curSamplePointPos);
-		//					sampleFacets[i].aroundSamplePoints.emplace_back(iter_2->second);
-		//					++iter_2; ++num;
-		//
-		//					if (!samplePointSet.count(curSamplePointPos))
-		//					{
-		//						samplePointSet.insert(curSamplePointPos);
-		//						samplePoints.emplace_back(iter_2->second);
-		//					}
-		//				}
-		//			}
-		//		}
-		//	}
-		//}
-
-		return samplePoints.size();
-	}
-
-	/**
-	* @brief: 计算Power Diagram(对所有采样面)
-	* @param out: 输出流
-	*/
-	void MSCuttingModel::computePowerDiagram(std::ofstream& out)
+	void MSCuttingModel::computeIsoline(std::ofstream& out)
 	{
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
 		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
@@ -1046,30 +781,21 @@ namespace core
 
 		// 保存当前面的PowerDiagram顶点的信息
 		std::vector<std::vector<PowerDiagramPoint_3>> facetPDPoints(numMeshFaces);
-		//LOG::qpInfo("#facet ", i);
 
 		// 保存当前面的PowerDiagram边的信息(通过顶点的输出索引进行存储)
 		std::vector<std::vector<std::pair<int, int>> > facetPDLines(numMeshFaces);
 		std::vector<std::unordered_map<int, std::vector<int>> > edgeTable(numMeshFaces); // 保存该面power diagram点的邻边表
 
-		//for (int i = 8; i < 9; ++i)
+		/* Step1. 对所有采样面计算Power Diagram并筛选 */
 		for (int i = 0; i < numMeshFaces; ++i)
 		{
 			computePDForFacet(i, globalOutVertIdx, facetPDPoints[i], facetPDLines[i], edgeTable[i], pdPointToOutIdx);
 			//LOG::qpInfo("-- Compute coarse power diagram is finished!\n");
 		}
 
+		/* Step2. 对筛选后的粗糙等值线结果进行后处理 */
 		for (int i = 0; i < numMeshFaces; ++i)
 		{
-			//if (i == 2173)
-			//{
-			//	/*for (const auto& point : curFacetADPoints)
-			//	{
-			//		std::cout << "point = " << point.transpose() << std::endl;
-			//	}*/
-			//	//system("pause");
-			//}
-
 			std::array<std::vector<PowerDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
 			std::map<PowerDiagramPoint_3, int> isoEdgePointToIdx; // 保存边上的(后处理过的)点到edgeTable索引的映射
 			const std::vector<PowerDiagramPoint_3>& projCurFacetPDPoints =
@@ -1081,12 +807,19 @@ namespace core
 			//LOG::qpInfo("-- Cutting is finished!\n");
 
 			// 输出Power Diagram中的所有全局坐标点
-			for (const auto& adPoint :
-				//facetPDPoints[i]
-				projCurFacetPDPoints
-				)
+			if (POST_PROCESSING_MAX_ITER <= 0)
 			{
-				out << "v " << adPoint.transpose() << std::endl;
+				for (const auto& adPoint : facetPDPoints[i])
+				{
+					out << "v " << adPoint.transpose() << std::endl;
+				}
+			}
+			else
+			{
+				for (const auto& adPoint : projCurFacetPDPoints)
+				{
+					out << "v " << adPoint.transpose() << std::endl;
+				}
 			}
 
 			// 输出Power Diagram中的所有边
@@ -1094,63 +827,68 @@ namespace core
 			{
 				out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
 			}
-
-			//LOG::qpSplit();
 		}
 
-		//// 将边上的点统一按逆时针排序
-		//struct DirSort {
-		//	PowerDiagramPoint_3 edgeBaseVert;
-		//	Vector3 edgeDir;
-		//	DirSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
-		//
-		//	bool operator()(const std::pair<PowerDiagramPoint_3, int>& lhs, const std::pair<PowerDiagramPoint_3, int>& rhs)
-		//	{
-		//		return ((lhs.first - edgeBaseVert).dot(edgeDir) < (rhs.first - edgeBaseVert).dot(edgeDir));
-		//	}
-		//};
-		//const auto& mEdgeVec = this->getMEdgeVec();
-		//std::vector<std::pair<std::pair<PowerDiagramPoint_3, int>, std::pair<PowerDiagramPoint_3, int>>> groupEdgePoint;
-		//for (auto& edge_face_point : edgeToPointsInNeighFace)
-		//{
-		//	if (edge_face_point.second.size() < 2) continue;
-		//	if (edge_face_point.second.size() != 2) { LOG::qpError("Non-manifold edge!"); continue; }
-		//
-		//	const int mEdgeIdx = edge_face_point.first;
-		//	const auto mEdgeVerts = mEdgeVec[mEdgeIdx]->verts();
-		//	const Vector3 mEdgeDir = (mEdgeVerts.second->pos - mEdgeVerts.first->pos).normalized();
-		//	const auto baseVert = mEdgeVerts.first->pos;
-		//
-		//	DirSort dirSort(baseVert, mEdgeDir);
-		//
-		//	int idx = 0;
-		//	std::array<int, 2> edgeNeighFace;
-		//	for (auto& face_point : edge_face_point.second)
-		//	{
-		//		edgeNeighFace[idx++] = face_point.first;
-		//		std::sort(face_point.second.begin(), face_point.second.end(), dirSort);
-		//	}
-		//
-		//	for (int j = 0; j < edge_face_point.second.at(edgeNeighFace[0]).size(); ++j)
-		//	{
-		//		auto p1 = edge_face_point.second.at(edgeNeighFace[0])[j];
-		//		auto p2 = edge_face_point.second.at(edgeNeighFace[1])[j];
-		//		if ((p1.first - baseVert).dot(mEdgeDir) > (p2.first - baseVert).dot(mEdgeDir)) std::swap(p1, p2);
-		//		groupEdgePoint.emplace_back(p1, p2);
-		//		out << "l " << p1.second << " " << p2.second << std::endl;
-		//	}
-		//
-		//	if (groupEdgePoint.size() >= 2)
-		//		for (int i = 0; i < groupEdgePoint.size() - 1; ++i)
-		//		{
-		//			if (scalarFunc.grad(groupEdgePoint[i].second.first).normalized().
-		//				isApprox(scalarFunc.grad(groupEdgePoint[i + 1].first.first).normalized()))
-		//				out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
-		//		}
-		//}
+		/* Step3. 将相邻两个面的等值线连接起来 */
+		// 将边上的点统一按逆时针排序
+		struct DirSort {
+			PowerDiagramPoint_3 edgeBaseVert;
+			Vector3 edgeDir;
+			DirSort(const PowerDiagramPoint_3& _edgeBaseVert, const Vector3& _edgeDir) :edgeBaseVert(_edgeBaseVert), edgeDir(_edgeDir) {}
+
+			bool operator()(const std::pair<PowerDiagramPoint_3, int>& lhs, const std::pair<PowerDiagramPoint_3, int>& rhs)
+			{
+				return ((lhs.first - edgeBaseVert).dot(edgeDir) < (rhs.first - edgeBaseVert).dot(edgeDir));
+			}
+		};
+		const auto& mEdgeVec = this->getMEdgeVec();
+		std::vector<std::pair<std::pair<PowerDiagramPoint_3, int>, std::pair<PowerDiagramPoint_3, int>>> groupEdgePoint;
+		for (auto& edge_face_point : edgeToPointsInNeighFace)
+		{
+			if (edge_face_point.second.size() < 2) continue;
+			if (edge_face_point.second.size() != 2) { LOG::qpError("Non-manifold edge!"); continue; }
+
+			const int mEdgeIdx = edge_face_point.first;
+			const auto mEdgeVerts = mEdgeVec[mEdgeIdx]->verts();
+			const Vector3 mEdgeDir = (mEdgeVerts.second->pos - mEdgeVerts.first->pos).normalized();
+			const auto baseVert = mEdgeVerts.first->pos;
+
+			DirSort dirSort(baseVert, mEdgeDir);
+
+			int idx = 0;
+			std::array<int, 2> edgeNeighFace;
+			for (auto& face_point : edge_face_point.second)
+			{
+				edgeNeighFace[idx++] = face_point.first;
+				std::sort(face_point.second.begin(), face_point.second.end(), dirSort);
+			}
+
+			for (int j = 0; j < edge_face_point.second.at(edgeNeighFace[0]).size(); ++j)
+			{
+				auto p1 = edge_face_point.second.at(edgeNeighFace[0])[j];
+				auto p2 = edge_face_point.second.at(edgeNeighFace[1])[j];
+				if ((p1.first - baseVert).dot(mEdgeDir) > (p2.first - baseVert).dot(mEdgeDir)) std::swap(p1, p2);
+				//groupEdgePoint.emplace_back(p1, p2);
+				out << "l " << p1.second << " " << p2.second << std::endl;
+			}
+
+			/*if (groupEdgePoint.size() >= 2)
+				for (int i = 0; i < groupEdgePoint.size() - 1; ++i)
+				{
+					if (scalarFunc.grad(groupEdgePoint[i].second.first).normalized().
+						isApprox(scalarFunc.grad(groupEdgePoint[i + 1].first.first).normalized()))
+						out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
+				}*/
+		}
 	}
 
-	/* Visualization */
+	///////////////////////
+	//    Visualiztion   //
+	///////////////////////
+	/**
+	* @brief: Visualization of sample points on each edge
+	* @param out: 用于输出所有采样点的输出流
+	*/
 	void MSCuttingModel::outputSamplePoints(std::ofstream& out)
 	{
 		if (out)
@@ -1158,30 +896,6 @@ namespace core
 			for (const auto& samplePoint : samplePoints)
 			{
 				out << "v " << samplePoint.pos.transpose() << std::endl;
-			}
-		}
-	}
-
-	/**
-	* @brief: Visualization of sample points on each edge
-	* @param out_1: 用于输出所有采样点的输出流
-	* @param out_2: 用于输出所有合理采样点的输出流
-	*/
-	void MSCuttingModel::outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2)
-	{
-		if (out_1)
-		{
-			for (const auto& samplePoint : samplePoints)
-			{
-				out_1 << "v " << samplePoint.pos.transpose() << std::endl;
-			}
-		}
-
-		if (out_2)
-		{
-			for (const auto& validSamplePoint : validSamplePoints)
-			{
-				out_2 << "v " << validSamplePoint.pos.transpose() << std::endl;
 			}
 		}
 	}
@@ -1218,44 +932,50 @@ namespace core
 		}
 	}
 
-	/* API for user */
+	///////////////////////
+	//    API for user   //
+	///////////////////////
 	/**
 	* @brief: 暴露给用户调用的接口，用于运行整体算法
-	* @param filename: 输出结果所保存的文件位置
+	* @param iter:				 设置后处理的迭代次数
+	* @param isolineVisFile:     等值线输出结果所保存的文件位置
+	* @param insideMeshVisFile:  内mesh输出结果所保存的文件位置
+	* @param outsideMeshVisFile: 外mesh输出结果所保存的文件位置
 	* @return: 算法运行成功/错误
 	*/
-	bool MSCuttingModel::launch(const std::string& ad_vis_file,
+	bool MSCuttingModel::launch(int iter,
+		const std::string& isolineVisFile,
 		const std::string& insideMeshVisFile,
 		const std::string& outsideMeshVisFile)
 	{
-		str_util::checkDir(ad_vis_file);
-		std::ofstream pd_vis_out(ad_vis_file);
-		if (!pd_vis_out) { LOG::qpError("I/O: File ", ad_vis_file.c_str(), " could not be opened!"); return false; }
+		/* 检查输出流 */
+		str_util::checkDir(isolineVisFile);
+		std::ofstream pd_vis_out(isolineVisFile);
+		if (!pd_vis_out) { LOG::qpError("I/O: File ", isolineVisFile.c_str(), " could not be opened!"); return false; }
 
-		samplePointPerEdge();
-
+		/* 设置采样点输出路径 */
 		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), (std::string)"sample_points.obj");
 		str_util::checkDir(sample_vis_file);
 		std::ofstream sample_vis_out(sample_vis_file);
 		if (!sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
 
-		/*const std::string valid_sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), (std::string)"valid_sample_points.obj");
-		str_util::checkDir(valid_sample_vis_file);
-		std::ofstream valid_sample_vis_out(valid_sample_vis_file);
-		if (!valid_sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }*/
-
+		/* 采样 */
+		samplePointPerEdge();
+		/* 输出采样点 */
 		LOG::qpInfo("Output Sample Points to ", std::quoted(sample_vis_file), " ...");
 		outputSamplePoints(sample_vis_out);
 		sample_vis_out.close();
 
-		LOG::qpInfo("Output Isoline to ", std::quoted(ad_vis_file), " ...");
-		computePowerDiagram(pd_vis_out);
+		/* 计算等值线 */
+		computeIsoline(pd_vis_out);
+		/* 输出采样点 */
+		LOG::qpInfo("Output Isoline to ", std::quoted(isolineVisFile), " ...");
 		pd_vis_out.close();
 
+		/* 计算Cutting结果 */
 		bool cut = (!insideMeshVisFile.empty() && !outsideMeshVisFile.empty()) ? true : false;
 		if (!cut) LOG::qpInfo("Cutting process is disabled.");
-		if (cut)
-		{
+		else {
 			str_util::checkDir(insideMeshVisFile);
 			std::ofstream inside_vis_out(insideMeshVisFile);
 			if (!inside_vis_out) { LOG::qpError("I/O: File ", insideMeshVisFile.c_str(), " could not be opened!"); return false; }
@@ -1271,6 +991,7 @@ namespace core
 		return true;
 	}
 
+#if ENABLE_TEST
 	/* Test APIs for us */
 	bool MSCuttingModel::testSamplingPoints(std::ofstream& out_1, std::ofstream& out_2)
 	{
@@ -1320,8 +1041,6 @@ namespace core
 			const auto point_2 = curSampleFacet.sites[i];
 			const auto point_3 = getGlobalCoordInFacet(facetIdx, point_2.pos);
 			LOG::qpNormal("global v: ", point_3.transpose());
-
-			//OFFSET_ENSURE(point_3.isApprox(curSampleFacet.aroundSamplePoints[i].pos, 1e-10));
 		}
 
 		return true;
@@ -1378,6 +1097,7 @@ namespace core
 
 		return true;
 	}
+#endif
 
 } // namespace core
 NAMESPACE_END(mscut)

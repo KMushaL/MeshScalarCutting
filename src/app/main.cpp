@@ -1,8 +1,7 @@
 ﻿#include <iostream>
 #include <CLI/CLI.hpp>
 #include "utils/String.hpp"
-#include "core/test/CoreTest.hpp"
-#include "geometry/test/GeoTest.hpp"
+#include "core/MSCuttingModel.hpp"
 
 using namespace mscut;
 
@@ -28,42 +27,22 @@ Eigen::Vector3d grad(const Eigen::Vector3d& p)
 	return (4.0 / 9) * Eigen::Vector3d(std::pow(std::fabs(p.x()), -1.0 / 3) * (p.x() < 0 ? -1 : 1), std::pow(std::fabs(p.y()), -1.0 / 3) * (p.y() < 0 ? -1 : 1), 0);
 }
 
-Eigen::Matrix3d hessian(const Eigen::Vector3d& p)
-{
-	Eigen::Matrix3d H;
-	H <<
-		-(4.0 / 27) * std::pow(p.x() * p.x(), -2.0 / 3), 0, 0,
-		0, -(4.0 / 27) * std::pow(p.y() * p.y(), -2.0 / 3), 0,
-		0, 0, 1;
-	return H;
-}
-
-Eigen::Matrix2d hessian_2(const Eigen::Vector2d& p)
-{
-	Eigen::Matrix2d H;
-	H <<
-		-(4.0 / 27) * std::pow(p.x() * p.x(), -2.0 / 3), 0,
-		0, -(4.0 / 27) * std::pow(p.y() * p.y(), -2.0 / 3);
-	return H;
-}
-
 int main(int argc, char** argv)
 {
 	// parse input arguments
 	CLI::App app("Mesh Scalar Cutting");
 	//app.add_flag("-h,--help", "Print configuration and exit.");
 
-	//std::string modelArg = R"(test2d.obj)";
 	std::string modelArg = R"(test2d_star.obj)";
 	app.add_option("-f,--file", modelArg,
 		"Input model's name with extension.")/*->required()*/;
 
-	int m_numSamplePoints = 8;
-	int n_numSamplePoints = 4;
-	app.add_option("-m", m_numSamplePoints,
+	int numSamplePoints = 4;
+	app.add_option("-n", numSamplePoints,
 		"Specify the number of sample points at each edge of input model.");
-	app.add_option("-n", n_numSamplePoints,
-		"Specify the number of sample points at each edge of input model.");
+
+	int iter = 2;
+	app.add_option("-k,--iter", iter);
 
 	try {
 		argv = app.ensure_utf8(argv);
@@ -73,32 +52,38 @@ int main(int argc, char** argv)
 		// 输出帮助信息
 		return app.exit(e);
 	}
-	//std::cout << "modelArg = " << modelArg << std::endl;
-	//printf("numSamplePoints = %d\n", numSamplePoints);
 
 	const std::string mesh_file(MODEL_DIR + R"(\)" + modelArg);
 	const std::string modelName = str_util::getFileName(mesh_file);
 
-	ScalarFunc scalarFunc = { val, grad, hessian, hessian_2 };
+	ScalarFunc scalarFunc = { val, grad };
 
-	// 传入奇点
+	// 传入不可导点
 	std::vector<Vector3> singulars;
 
-	/*singulars.emplace_back(Vector3(-1.83713, 0, 0));
-	singulars.emplace_back(Vector3(1.83713, 0, 0));
-	singulars.emplace_back(Vector3(0, -1.83713, 0));
-	singulars.emplace_back(Vector3(0, 1.83713, 0));
-	singulars.emplace_back(Vector3(0, 0, 0));*/
-	core::MSCuttingModel mscModel(mesh_file, scalarFunc, singulars, m_numSamplePoints, n_numSamplePoints);
-	/*const std::string norm_mesh_file(str_util::concatFilePath(VIS_DIR, modelName, modelName + "_norm.obj"));
-	core::MSCuttingModel mscModel(mesh_file, norm_mesh_file, scalarFunc, numSamplePoints);*/
+	std::string meshNormVisDir;
 
-	/*const std::string ad_vis_file = str_util::concatFilePath(VIS_DIR, mscModel.modelName, "apollonius_diagram.obj");
-	mscModel.launch(ad_vis_file);*/
-	const std::string pd_vis_file = str_util::concatFilePath(
-		VIS_DIR, mscModel.modelName, std::to_string(n_numSamplePoints), "isoline.obj"
-	);
-	mscModel.launch(pd_vis_file);
+#define MESH_NORM 0
+#if MESH_NORM
+	// norm版构造函数
+	meshNormVisDir = str_util::concatFilePath(VIS_DIR, modelName + "_norm");
+	const std::string norm_mesh_file(str_util::concatFilePath(meshNormVisDir, modelName + "_norm.obj"));
+	double scaleFactor = 1.0; // 用于norm后的缩放，若不norm则无需传递
+	core::MSCuttingModel mscModel(mesh_file, numSamplePoints, scalarFunc, singulars, norm_mesh_file, scaleFactor);
+#else
+	// 非norm版构造函数
+	meshNormVisDir = str_util::concatFilePath(VIS_DIR, modelName);
+	core::MSCuttingModel mscModel(mesh_file, numSamplePoints, scalarFunc, singulars);
+#endif
+
+
+	for (int i = 0; i <= iter; ++i)
+	{
+		const std::string pd_vis_file = str_util::concatFilePath(
+			meshNormVisDir, std::to_string(numSamplePoints), "circle", "isoline_" + std::to_string(i) + ".obj"
+		);
+		mscModel.launch(i, pd_vis_file);
+	}
 
 	/*const std::string inside_vis_file = str_util::concatFilePath(
 		VIS_DIR, mscModel.modelName, std::to_string(numSamplePoints), "insideMesh.obj"

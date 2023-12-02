@@ -43,7 +43,7 @@ namespace geometry
 
 	protected:
 		/* Axis-aligned bounding box */
-		double boxScaleFactor;
+		double scaleFactor;
 		double diagonalLengthOfBBox;
 		AABox<Vector3> modelBoundingBox;
 
@@ -55,12 +55,18 @@ namespace geometry
 		/* Constructor and Destructor */
 		PolyMesh() noexcept = default;
 
-		PolyMesh(const std::string& file, const bool is2Unifrom, const double _scaleFactor) noexcept :boxScaleFactor(_scaleFactor) {
-			readMesh(file);
+		PolyMesh(const std::string& in_file, bool isMeshNormalized = false,
+			double _scaleFactor = 1.0, const std::string& norm_out_file = "",
+			bool isBoxUniform = false)
+			noexcept :scaleFactor(_scaleFactor)
+		{
+			readMesh(in_file);
+
+			if (isMeshNormalized) meshNorm(norm_out_file);
 
 			//if constexpr (isNormalized) meshNorm();
 
-			if (is2Unifrom) setBoundingBox<true>();
+			if (isBoxUniform) setBoundingBox<true>();
 			else setBoundingBox<false>();
 
 			modelBoundingBox.output(str_util::concatFilePath(VIS_DIR, modelName, (std::string)"modelBoundingBox.obj"));
@@ -68,29 +74,6 @@ namespace geometry
 
 			constructMesh();
 		}
-
-		PolyMesh(const std::string& file, const bool is2Unifrom, const double _scaleFactor,
-			const std::string& norm_out_file) noexcept :boxScaleFactor(_scaleFactor) {
-			readMesh(file);
-
-			meshNorm(norm_out_file);
-
-			//if constexpr (isNormalized) meshNorm();
-
-			if (is2Unifrom) setBoundingBox<true>();
-			else setBoundingBox<false>();
-
-			modelBoundingBox.output(str_util::concatFilePath(VIS_DIR, modelName, (std::string)"modelBoundingBox.obj"));
-			LOG::qpInfo("Diagonal length of the bounding-box = ", diagonalLengthOfBBox);
-
-			constructMesh();
-		}
-
-		PolyMesh(const std::string& file, const bool is2Unifrom) noexcept :PolyMesh(file, is2Unifrom, 1) {}
-
-		explicit PolyMesh(const std::string& file) noexcept :PolyMesh(file, false, 1) {}
-
-		explicit PolyMesh(const std::string& file, const std::string& norm_out_file) noexcept :PolyMesh(file, false, 1, norm_out_file) {}
 
 		virtual ~PolyMesh() noexcept = default;
 
@@ -203,7 +186,44 @@ namespace geometry
 	private:
 		/* Set (uniform)bounding-box */
 		template<bool is2Uniform>
-		void setBoundingBox();
+		void setBoundingBox()
+		{
+			Vector3 minV = vertMat.colwise().minCoeff();
+			Vector3 maxV = vertMat.colwise().maxCoeff();
+
+			if constexpr (is2Uniform)
+			{
+				modelBoundingBox = AABox<Vector3>(minV, maxV); // initialize answer
+				Vector3 lengths = maxV - minV; // check length of given bbox in every direction
+				const double max_length = fmaxf(lengths.x(), fmaxf(lengths.y(), lengths.z())); // find max length
+				for (unsigned int i = 0; i < 3; i++) { // for every direction (X,Y,Z)
+					if (max_length == lengths[i]) {
+						continue;
+					}
+					else {
+						const double delta = max_length - lengths[i]; // compute difference between largest length and current (X,Y or Z) length
+						modelBoundingBox.boxOrigin[i] = minV[i] - (delta / 2.0f); // pad with half the difference before current min
+						modelBoundingBox.boxEnd[i] = maxV[i] + (delta / 2.0f); // pad with half the difference behind current max
+					}
+				}
+
+				// Next snippet adresses the problem reported here: https://github.com/Forceflow/cuda_voxelizer/issues/7
+				// Suspected cause: If a triangle is axis-aligned and lies perfectly on a voxel edge, it sometimes gets counted / not counted
+				// Probably due to a numerical instability (division by zero?)
+				// Ugly fix: we pad the bounding box on all sides by 1/10001th of its total length, bringing all triangles ever so slightly off-grid
+				Vector3 epsilon = (modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin) / 10001; // 之前是10001
+				modelBoundingBox.boxOrigin -= epsilon;
+				modelBoundingBox.boxEnd += epsilon;
+				modelBoundingBox.boxWidth = modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin;
+			}
+			else
+			{
+				modelBoundingBox = AABox(minV, maxV);
+			}
+
+			// diagonal length of the bounding-box
+			diagonalLengthOfBBox = (modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin).norm();
+		}
 
 	private:
 		/* Methods for normalizing the mesh */
@@ -215,8 +235,6 @@ namespace geometry
 
 	public:
 		//template<typename = std::enable_if_t<isNormalized>>
-		void meshNorm();
-
 		void meshNorm(const std::string& out_file);
 
 	protected:
@@ -308,5 +326,3 @@ namespace geometry
 
 } // namespace geometry
 NAMESPACE_END(mscut)
-
-#include "PolyMesh.inl"

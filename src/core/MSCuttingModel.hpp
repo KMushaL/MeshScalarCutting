@@ -1,6 +1,5 @@
 ﻿#pragma once
 #include "geometry/PolyMesh.hpp"
-#include "core/ApolloniusGraphAdaptor.hpp"
 #include "core/PowerDiagramAdaptor.hpp"
 #include "core/CDTAdaptor.hpp"
 #include <functional>
@@ -11,7 +10,6 @@ namespace core
 {
 	using namespace detail;
 	using namespace geometry;
-
 
 	/* 为了你方便以后调试，先不用模板 */
 	//template<bool isNormalized = false>
@@ -34,16 +32,13 @@ namespace core
 		using PowerDiagramLine_3 = std::pair<PowerDiagramPoint_3, PowerDiagramPoint_3>;
 		using CDTriangle = typename CDTAdaptor::CDTriangle;
 
+	public:
+		/* struct type */
 		using ScalarValFunc = std::function<Scalar(const PowerDiagramPoint_3&)>;
 		using GradFunc = std::function<Eigen::Vector3d(const PowerDiagramPoint_3&)>;
-		using HessianFunc = std::function<Eigen::Matrix3d(const PowerDiagramPoint_3&)>;
-		using HessianFunc_2 = std::function<Eigen::Matrix2d(const Eigen::Vector2d&)>;
-
 		struct ScalarFunc {
 			ScalarValFunc val;
 			GradFunc grad;
-			HessianFunc hessian;
-			HessianFunc_2 hessian_2;
 		};
 
 		enum class CELL_TYPE {
@@ -55,7 +50,7 @@ namespace core
 		/* 采样点定义 */
 		struct SamplePoint {
 			int mEdgeIdx = -1;					// 属于的边(注意是model edge，而不是half edge)
-			Vector3 pos;							// 采样点坐标
+			Vector3 pos;						// 采样点坐标
 			double val;
 
 			SamplePoint() {}
@@ -103,52 +98,160 @@ namespace core
 		};
 
 	private:
+		/* Constane Variables */
+		constexpr static int WEIGHT_MAX_ITER = 20;			// 计算权重时的最大迭代次数
+
+		constexpr static double SINGULAR_DIS_EPSILON = 0.5; // 与不可导点的距离值
+
+		constexpr static double NUMERICAL_EPSILON = 1e-9;   // 控制后处理中的停止迭代误差(包括梯度接近于0、值接近于c等)
+
+		constexpr static double PROJECT_EPSILON = 1e-6;     // 控制后处理中的投影误差
+
+	private:
 		/* Data */
-		int m_numSamplesPerEdge;
+		/* 标量函数 */
+		ScalarFunc scalarFunc;
+
+		/* 采样相关 */
 		int numSamplesPerEdge;  // 每条边固定的采样数量 TODO：后期不可能固定
 
 		std::vector<CELL_TYPE> meshVertsType;
 
-		std::vector<Vector3> singulars;
-		constexpr static double singularEpsilon = 0.5;
-		constexpr static double alphaEpsilon = 1;
-
 		std::vector<SamplePoint> samplePoints; // 整个模型所有边上的采样点(包括边的端点)
-
-		// TODO: 目前合理的条件是相邻点对的隐函数值异号
-		std::vector<SamplePoint> validSamplePoints; // 整个模型所有边上那些合理的采样点(可能包括边的端点)
 
 		std::vector<SampleFacet> sampleFacets; // 包含了边采样点的模型面
 
-		ApolloniusGraphAdaptor agAdaptor;
+		std::vector<Vector3> singulars;
 
+		/* 后处理相关 */
+		int POST_PROCESSING_MAX_ITER;
+
+	private:
+		/* Adaptors */
 		PowerDiagramAdaptor pdAdaptor;
 
 		CDTAdaptor cdtAdaptor;
 
-		ScalarFunc scalarFunc; // 标量函数
-
+	private:
+		/* 用于Cutting的数据结构 */
 		using MeshComponent = geometry::MeshComponent<Scalar, Vector3>;
+
+		// 用于控制内外mesh的输出点索引，注意是从0开始
+		int insideMeshVertIdx = 0;
+		int outsideMeshVertIdx = 0;
+
 		std::vector<MeshComponent> insideMesh;
 		std::vector<MeshComponent> outsideMesh;
-		int insideMeshVertIdx = 0, outsideMeshVertIdx = 0; // 用于控制内外mesh的输出点索引，注意是从0开始
 
 	public:
 		/* Constructor and Destructor */
 		MSCuttingModel() noexcept = default;
 
-		MSCuttingModel(const std::string& filename, const std::string& norm_out_file, const ScalarFunc& _scalarFunc, int _numSamples) noexcept :
-			PolyMesh(filename, norm_out_file), scalarFunc(_scalarFunc), numSamplesPerEdge(_numSamples) {
+		/* 非MeshNorm版构造函数 */
+		MSCuttingModel(const std::string& filename,
+			int _numSamples,
+			const ScalarFunc& _scalarFunc,
+			const std::vector<Vector3>& _singulars) noexcept :
+			PolyMesh(filename), numSamplesPerEdge(_numSamples), scalarFunc(_scalarFunc), singulars(_singulars)
+		{
+			samplePoints.reserve(_numSamples * numMeshEdges);
+			sampleFacets.resize(numMeshFaces, SampleFacet());
+
+			meshVertsType.resize(numMeshVerts);
+			pdAdaptor = PowerDiagramAdaptor();
+		}
+
+		/* MeshNorm版构造函数 */
+		MSCuttingModel(const std::string& filename,
+			int _numSamples,
+			const ScalarFunc& _scalarFunc,
+			const std::vector<Vector3>& _singulars,
+			const std::string& norm_out_file,
+			double _scaleFactor = 1.0) noexcept :
+			PolyMesh(filename, true, _scaleFactor, norm_out_file),
+			numSamplesPerEdge(_numSamples), scalarFunc(_scalarFunc), singulars(_singulars)
+		{
 			samplePoints.reserve(numSamplesPerEdge * numMeshEdges);
 			sampleFacets.resize(numMeshFaces, SampleFacet());
 
 			meshVertsType.resize(numMeshVerts);
-
-			agAdaptor = ApolloniusGraphAdaptor();
 			pdAdaptor = PowerDiagramAdaptor();
 		}
 
-		MSCuttingModel(const std::string& filename,
+		~MSCuttingModel() noexcept = default;
+
+	private:
+		/* Details */
+
+		/* 设置单个面的采样点二维局部坐标和权重 */
+		int updateFacetLocalCoord(int facetIdx, Polygon_2& facetBoundary);
+
+		/* Transform coordinate of point from local to global after computing isolines */
+		Eigen::Vector3d getGlobalCoordInFacet(int facetIdx, const PowerDiagramPoint_2& point_2);
+
+		/* 计算单个面的power diagram */
+		int computePDForFacet(int facetIdx,
+			int& globalOutVertIdx, // 用于控制等值线的输出索引值
+			std::vector<PowerDiagramPoint_3>& apolloniusDiagramPoints,
+			std::vector<std::pair<int, int>>& apolloniusDiagramLines,
+			std::unordered_map<int, std::vector<int>>& edgeTable,
+			std::map<PowerDiagramPoint_3, int>&);
+
+		/* 对单个面的等值线进行后处理 */
+		std::vector<PowerDiagramPoint_3> postProcessFacetPoints(int faceIdx,
+			const std::vector<std::vector<PowerDiagramPoint_3>>&,
+			const std::map<PowerDiagramPoint_3, int>&,
+			std::array<std::vector<PowerDiagramPoint_3>, 3>&,
+			std::map<PowerDiagramPoint_3, int>&,
+			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>&);
+
+		/* 计算单个面的CDT */
+		using CellTriangle = std::vector<CDTriangle>;
+		std::vector<CellTriangle> computeCDTForFacet(int faceIdx,
+			const std::vector<PowerDiagramPoint_3>&,
+			const std::unordered_map<int, std::vector<int>>&,
+			const std::array<std::vector<PowerDiagramPoint_3>, 3>&,
+			const std::map<PowerDiagramPoint_3, int>&);
+
+	private:
+		/* 对mesh的所有边进行采样 */
+		int samplePointPerEdge();
+
+		/* 计算所有面的power diagram，并输出 */
+		void computeIsoline(std::ofstream& out);
+
+	private:
+		/* Visualization */
+		void outputSamplePoints(std::ofstream& out);
+
+		void outputCutMesh(std::ofstream& out_1, std::ofstream& out_2);
+
+	public:
+		/* API for user */
+		/*
+			第一个参数控制后处理中的迭代次数
+			后面三个参数分别传递的等值线的保存位置以及切割后内外mesh的保存位置
+		*/
+		bool launch(int iter,
+			const std::string& isolineVisFile,
+			const std::string& insideMeshVisFile = "",
+			const std::string& outsideMeshVisFile = "");
+
+#if ENABLE_TEST
+	public:
+		/* Test APIs for us */
+		bool testSamplingPoints(std::ofstream& out_1, std::ofstream& out_2);
+
+		bool testLocalGlobalTransform(int facetIdx);
+
+		bool testComputeADForFacet(int facetIdx, std::ofstream& out);
+#endif
+
+
+		/* [[DEPRECATED]] */
+		/*
+		int m_numSamplesPerEdge;
+		[[deprecated]] MSCuttingModel(const std::string& filename,
 			const ScalarFunc& _scalarFunc, const std::vector<Vector3>& _singulars,
 			int _m_numSamples, int _n_numSamples) noexcept :
 			PolyMesh(filename), scalarFunc(_scalarFunc), singulars(_singulars),
@@ -161,83 +264,14 @@ namespace core
 
 			agAdaptor = ApolloniusGraphAdaptor();
 			pdAdaptor = PowerDiagramAdaptor();
-		}
+		}*/
 
-		MSCuttingModel(const std::string& filename, int _numSamples) noexcept :
-			PolyMesh(filename), numSamplesPerEdge(_numSamples) {
-			samplePoints.reserve(_numSamples * numMeshEdges);
-			sampleFacets.resize(numMeshFaces, SampleFacet());
-
-			meshVertsType.resize(numMeshVerts);
-
-			agAdaptor = ApolloniusGraphAdaptor();
-			pdAdaptor = PowerDiagramAdaptor();
-		}
-
-		MSCuttingModel(const std::string& filename) noexcept : MSCuttingModel(filename, 0) {}
-
-		~MSCuttingModel() noexcept = default;
-
-	private:
-		/* Details */
-		/*
-		   Compute local coordinate(while updating related data) and get the boundary
-		   for sample facet before computing Apollonius Graph
-		*/
-		int updateFacetLocalCoord(int facetIdx, Polygon_2& facetBoundary);
-
-		/* Transform coordinate of point from local to global after computing Apollonius Graph */
-		Eigen::Vector3d getGlobalCoordInFacet(int facetIdx, const PowerDiagramPoint_2& point_2);
-
-		int computePDForFacet(int facetIdx,
-			int& globalOutVertIdx, // 用于控制等值线的输出索引值
-			std::vector<PowerDiagramPoint_3>& apolloniusDiagramPoints,
-			std::vector<std::pair<int, int>>& apolloniusDiagramLines,
-			std::unordered_map<int, std::vector<int>>& edgeTable,
-			std::map<PowerDiagramPoint_3, int>&);
-
-		static constexpr double PROJ_EPSILON = 1e-6;
-		std::vector<PowerDiagramPoint_3> postProcessFacetPoints(int faceIdx,
-			const std::vector<std::vector<PowerDiagramPoint_3>>&,
-			const std::map<PowerDiagramPoint_3, int>&,
-			std::array<std::vector<PowerDiagramPoint_3>, 3>&,
-			std::map<PowerDiagramPoint_3, int>&,
-			std::unordered_map<int, std::unordered_map<int, std::vector<std::pair<PowerDiagramPoint_3, int>>>>&);
-
-		using CellTriangle = std::vector<CDTriangle>;
-		std::vector<CellTriangle> computeCDTForFacet(int faceIdx,
-			const std::vector<PowerDiagramPoint_3>&,
-			const std::unordered_map<int, std::vector<int>>&,
-			const std::array<std::vector<PowerDiagramPoint_3>, 3>&,
-			const std::map<PowerDiagramPoint_3, int>&);
-
-	private:
-		/* Methods for Our Algorithm */
-		int samplePointPerEdge();
-
-		void computePowerDiagram(std::ofstream& out);
-
-	private:
-		/* Visualization */
-		void outputSamplePoints(std::ofstream& out);
+		/* [[DEPRECATED]] */
+		/* TODO: 目前合理的条件是相邻点对的隐函数值异号
+		std::vector<SamplePoint> validSamplePoints; // 整个模型所有边上那些合理的采样点(可能包括边的端点)
 
 		void outputSamplePoints(std::ofstream& out_1, std::ofstream& out_2);
-
-		void outputCutMesh(std::ofstream& out_1, std::ofstream& out_2);
-
-	public:
-		/* API for user */
-		bool launch(const std::string& ad_vis_file,
-			const std::string& insideMeshVisFile = "",
-			const std::string& outsideMeshVisFile = ""); // 分别传递的等值线的保存位置以及切割后的内外mesh保存位置
-
-	public:
-		/* Test APIs for us */
-		bool testSamplingPoints(std::ofstream& out_1, std::ofstream& out_2);
-
-		bool testLocalGlobalTransform(int facetIdx);
-
-		bool testComputeADForFacet(int facetIdx, std::ofstream& out);
+		*/
 	};
 
 } // namespace core

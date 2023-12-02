@@ -1,7 +1,6 @@
 ﻿//
 // Created by lei on 23-9-13.
 //
-#pragma once
 #include "PolyMesh.hpp"
 #include "utils/Log.hpp"
 #include "utils/Donut.hpp"
@@ -14,7 +13,7 @@ namespace geometry
 {
 	/* Memory allocate and deallocate */
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::reserveMemory(size_t numVerts, size_t numFaces) {
+	void PolyMesh/*<isNormalized>*/::reserveMemory(size_t numVerts, size_t numFaces) {
 		vertVec.reserve(numVerts);
 		//            vertPool.allocate(numVerts);
 
@@ -30,7 +29,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::clear() {
+	void PolyMesh/*<isNormalized>*/::clear() {
 		for (const auto& vert : vertVec)
 			//                vertPool.destroy(vert);
 			vertPool.deallocate(vert);
@@ -54,7 +53,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline HEVert* PolyMesh/*<isNormalized>*/::newVertex() {
+	HEVert* PolyMesh/*<isNormalized>*/::newVertex() {
 		HEVert* _vert = vertPool.allocate();
 		vertPool.construct(_vert, HEVert());
 		//            new(_vert) HEVert();
@@ -64,7 +63,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline HEFace* PolyMesh/*<isNormalized>*/::newFace() {
+	HEFace* PolyMesh/*<isNormalized>*/::newFace() {
 		HEFace* _face = facePool.allocate();
 		facePool.construct(_face, HEFace());
 		//            new(_face) HEFace();
@@ -74,7 +73,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline MEdge* PolyMesh/*<isNormalized>*/::newEdge() {
+	MEdge* PolyMesh/*<isNormalized>*/::newEdge() {
 		MEdge* _mEdge = mEdgePool.allocate();
 		mEdgePool.construct(_mEdge, MEdge());
 		//            new(_mEdge) MEdge();
@@ -84,7 +83,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline MEdge* PolyMesh/*<isNormalized>*/::newEdge(HEVert* v1, HEVert* v2) {
+	MEdge* PolyMesh/*<isNormalized>*/::newEdge(HEVert* v1, HEVert* v2) {
 		MEdge* _mEdge = mEdgePool.allocate();
 		mEdgePool.construct(_mEdge, MEdge(v1, v2));
 		//            new(_mEdge) MEdge(v1, v2);
@@ -94,7 +93,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline HEdge* PolyMesh/*<isNormalized>*/::newHalfEdge() {
+	HEdge* PolyMesh/*<isNormalized>*/::newHalfEdge() {
 		HEdge* _hEdge = hEdgePool.allocate();
 		hEdgePool.construct(_hEdge, HEdge());
 		//            new(_hEdge) HEdge();
@@ -104,7 +103,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteVertexInMem(HEVert* vert) {
+	void PolyMesh/*<isNormalized>*/::deleteVertexInMem(HEVert* vert) {
 		assert(vert->index < vertVec.size());
 		assert(vert == vertVec[vert->index]);
 
@@ -123,7 +122,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteFaceInMem(HEFace* face) {
+	void PolyMesh/*<isNormalized>*/::deleteFaceInMem(HEFace* face) {
 		assert(face->index < faceVec.size());
 		assert(face == faceVec[face->index]);
 
@@ -140,7 +139,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteEdgeInMem(MEdge* mEdge) {
+	void PolyMesh/*<isNormalized>*/::deleteEdgeInMem(MEdge* mEdge) {
 		assert(mEdge->index < mEdgeVec.size());
 		assert(mEdge == mEdgeVec[mEdge->index]);
 
@@ -157,7 +156,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteHalfEdgeInMem(HEdge* hEdge) {
+	void PolyMesh/*<isNormalized>*/::deleteHalfEdgeInMem(HEdge* hEdge) {
 		assert(hEdge->index < hEdgeVec.size());
 		assert(hEdge == hEdgeVec[hEdge->index]);
 
@@ -175,14 +174,14 @@ namespace geometry
 
 	/* Data manipulator */
 	//template<bool isNormalized>
-	inline HEVert* PolyMesh/*<isNormalized>*/::addVertex(const Point3& point) {
+	HEVert* PolyMesh/*<isNormalized>*/::addVertex(const Point3& point) {
 		HEVert* _vert = newVertex();
 		_vert->pos = point;
 		return _vert;
 	}
 
 	//template<bool isNormalized>
-	inline MEdge* PolyMesh/*<isNormalized>*/::addEdge(HEVert* v1, HEVert* v2) {
+	MEdge* PolyMesh/*<isNormalized>*/::addEdge(HEVert* v1, HEVert* v2) {
 		if (v1 == nullptr || v2 == nullptr) return nullptr;
 
 		MEdge* mEdge = edgeBetween(v1, v2);
@@ -211,7 +210,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline HEFace* PolyMesh/*<isNormalized>*/::addFace(std::vector<HEVert*>& aroundVerts) {
+	HEFace* PolyMesh/*<isNormalized>*/::addFace(std::vector<HEVert*>& aroundVerts) {
 		if (aroundVerts.empty()) return nullptr;
 
 		size_t numVerts = aroundVerts.size();
@@ -376,13 +375,13 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline HEFace* PolyMesh/*<isNormalized>*/::addFace(const std::vector<HEdge*>& halfEdges) {
+	HEFace* PolyMesh/*<isNormalized>*/::addFace(const std::vector<HEdge*>& halfEdges) {
 		if (halfEdges.empty()) return nullptr;
 
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteVertex(HEVert* vert) {
+	void PolyMesh/*<isNormalized>*/::deleteVertex(HEVert* vert) {
 		if (vert == nullptr) return;
 
 		if (isIsolated<HEVert>(vert))
@@ -396,17 +395,17 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteFace(HEFace* face) {
+	void PolyMesh/*<isNormalized>*/::deleteFace(HEFace* face) {
 
 	}
 
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::deleteEdge(MEdge* edge) {
+	void PolyMesh/*<isNormalized>*/::deleteEdge(MEdge* edge) {
 
 	}
 
 	/*template<bool isNormalized>*/
-	inline void PolyMesh/*<isNormalized>*/::constructMesh() {
+	void PolyMesh/*<isNormalized>*/::constructMesh() {
 		for (size_t i = 0; i < numMeshVerts; ++i) {
 			addVertex(vertMat.row(i));
 		}
@@ -425,52 +424,10 @@ namespace geometry
 		numMeshEdges = numEdges();
 	}
 
-	/* Set (uniform)bounding-box */
-	//template<bool isNormalized>
-	template<bool is2Uniform>
-	inline void PolyMesh/*<isNormalized>*/::setBoundingBox()
-	{
-		Vector3 minV = vertMat.colwise().minCoeff();
-		Vector3 maxV = vertMat.colwise().maxCoeff();
-
-		if constexpr (is2Uniform)
-		{
-			modelBoundingBox = AABox<Vector3>(minV, maxV); // initialize answer
-			Vector3 lengths = maxV - minV; // check length of given bbox in every direction
-			const double max_length = fmaxf(lengths.x(), fmaxf(lengths.y(), lengths.z())); // find max length
-			for (unsigned int i = 0; i < 3; i++) { // for every direction (X,Y,Z)
-				if (max_length == lengths[i]) {
-					continue;
-				}
-				else {
-					const double delta = max_length - lengths[i]; // compute difference between largest length and current (X,Y or Z) length
-					modelBoundingBox.boxOrigin[i] = minV[i] - (delta / 2.0f); // pad with half the difference before current min
-					modelBoundingBox.boxEnd[i] = maxV[i] + (delta / 2.0f); // pad with half the difference behind current max
-				}
-			}
-
-			// Next snippet adresses the problem reported here: https://github.com/Forceflow/cuda_voxelizer/issues/7
-			// Suspected cause: If a triangle is axis-aligned and lies perfectly on a voxel edge, it sometimes gets counted / not counted
-			// Probably due to a numerical instability (division by zero?)
-			// Ugly fix: we pad the bounding box on all sides by 1/10001th of its total length, bringing all triangles ever so slightly off-grid
-			Vector3 epsilon = (modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin) / 10001; // 之前是10001
-			modelBoundingBox.boxOrigin -= epsilon;
-			modelBoundingBox.boxEnd += epsilon;
-			modelBoundingBox.boxWidth = modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin;
-		}
-		else
-		{
-			modelBoundingBox = AABox(minV, maxV);
-		}
-
-		// diagonal length of the bounding-box
-		diagonalLengthOfBBox = (modelBoundingBox.boxEnd - modelBoundingBox.boxOrigin).norm();
-	}
-
 	/* Methods for normalizing the mesh */
 	//template<bool isNormalized>
 	//template<typename>
-	inline Matrix<Scalar, 4, 4> PolyMesh/*<isNormalized>*/::calcTransformMatrix()
+	Matrix<Scalar, 4, 4> PolyMesh/*<isNormalized>*/::calcTransformMatrix()
 	{
 		Vector3 boxMin = vertMat.colwise().minCoeff();
 		Vector3 boxMax = vertMat.colwise().maxCoeff();
@@ -483,7 +440,7 @@ namespace geometry
 			scale = std::max<Scalar>(scale, boxMax[d] - boxMin[d]);
 			minScale = std::min<Scalar>(scale, boxMax[d] - boxMin[d]);
 		}
-		scale *= boxScaleFactor;
+		scale *= scaleFactor;
 		Vector3 center = 0.5 * boxMax + 0.5 * boxMin;
 
 		for (int i = 0; i < 3; i++)
@@ -498,20 +455,9 @@ namespace geometry
 		return zoomMatrix * transMatrix;
 	}
 
-	inline void PolyMesh/*<isNormalized>*/::meshNorm()
-	{
-		auto transMat = calcTransformMatrix();
-#pragma omp parallel for
-		for (int i = 0; i < numMeshVerts; ++i)
-		{
-			vertMat.row(i) += transMat.block(3, 0, 1, 3);
-			vertMat.row(i) = vertMat.row(i) * transMat.block(0, 0, 3, 3);
-		}
-	}
-
 	//template<bool isNormalized>
 	//template<typename>
-	inline void PolyMesh/*<isNormalized>*/::meshNorm(const std::string& out_file)
+	void PolyMesh/*<isNormalized>*/::meshNorm(const std::string& out_file)
 	{
 		auto transMat = calcTransformMatrix();
 #pragma omp parallel for
@@ -521,12 +467,12 @@ namespace geometry
 			vertMat.row(i) = vertMat.row(i) * transMat.block(0, 0, 3, 3);
 		}
 
-		writeToOBJ(out_file);
+		if (!out_file.empty()) writeToOBJ(out_file);
 	}
 
 	//template<bool isNormalized>
 	//template<typename>
-	inline void PolyMesh/*<isNormalized>*/::meshInverseNorm()
+	void PolyMesh/*<isNormalized>*/::meshInverseNorm()
 	{
 		Matrix<Scalar, 4, 4> transMat = calcTransformMatrix();
 		Matrix<Scalar, 3, 3> inverseTrans = transMat.block(0, 0, 3, 3).inverse();
@@ -540,7 +486,7 @@ namespace geometry
 
 	/* Get vertex's neighbors */
 	//template<bool isNormalized>
-	inline std::vector<HEVert*> PolyMesh/*<isNormalized>*/::vertOneRingVerts(HEVert* vert) const {
+	std::vector<HEVert*> PolyMesh/*<isNormalized>*/::vertOneRingVerts(HEVert* vert) const {
 		std::vector<HEVert*> oneRingVerts;
 		if (vert == nullptr || vert->isIsolated()) return oneRingVerts;
 
@@ -555,7 +501,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<MEdge*> PolyMesh/*<isNormalized>*/::vertOneRingEdges(HEVert* vert) const {
+	std::vector<MEdge*> PolyMesh/*<isNormalized>*/::vertOneRingEdges(HEVert* vert) const {
 		std::vector<MEdge*> oneRingEdges;
 		if (vert == nullptr || vert->isIsolated()) return oneRingEdges;
 
@@ -570,7 +516,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<HEdge*> PolyMesh/*<isNormalized>*/::vertOneRingHEdges(HEVert* vert) const {
+	std::vector<HEdge*> PolyMesh/*<isNormalized>*/::vertOneRingHEdges(HEVert* vert) const {
 		std::vector<HEdge*> oneRingHEdges;
 		if (vert == nullptr || vert->isIsolated()) return oneRingHEdges;
 
@@ -587,7 +533,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<HEFace*> PolyMesh/*<isNormalized>*/::vertOneRingFaces(HEVert* vert) const {
+	std::vector<HEFace*> PolyMesh/*<isNormalized>*/::vertOneRingFaces(HEVert* vert) const {
 		std::vector<HEFace*> oneRingFaces;
 		if (vert == nullptr || vert->isIsolated()) return oneRingFaces;
 
@@ -604,12 +550,12 @@ namespace geometry
 
 	/* Get face's vertices, edges, half-edges and adjacent faces */
 	//template<bool isNormalized>
-	inline std::vector<HEVert*> PolyMesh/*<isNormalized>*/::faceVerts(HEFace* face) const {
+	std::vector<HEVert*> PolyMesh/*<isNormalized>*/::faceVerts(HEFace* face) const {
 		return face->aroundVerts();
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<MEdge*> PolyMesh/*<isNormalized>*/::faceMEdges(HEFace* face) const {
+	std::vector<MEdge*> PolyMesh/*<isNormalized>*/::faceMEdges(HEFace* face) const {
 		std::vector<MEdge*> f_mEdges;
 		if (face == nullptr) return f_mEdges;
 
@@ -624,7 +570,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<HEdge*> PolyMesh/*<isNormalized>*/::faceHEdges(HEFace* face) const {
+	std::vector<HEdge*> PolyMesh/*<isNormalized>*/::faceHEdges(HEFace* face) const {
 		std::vector<HEdge*> f_hEdges;
 		if (face == nullptr) return f_hEdges;
 
@@ -641,7 +587,7 @@ namespace geometry
 	}
 
 	//template<bool isNormalized>
-	inline std::vector<HEFace*> PolyMesh/*<isNormalized>*/::faceAdjacentFaces(HEFace* face) const {
+	std::vector<HEFace*> PolyMesh/*<isNormalized>*/::faceAdjacentFaces(HEFace* face) const {
 		std::vector<HEFace*> f_adjFaces;
 		if (face == nullptr || face->isIsolated()) return f_adjFaces;
 
@@ -658,7 +604,7 @@ namespace geometry
 
 	/* Get edge's adjacent faces */
 	//template<bool isNormalized>
-	inline std::vector<HEFace*> PolyMesh/*<isNormalized>*/::edgeAdjacentFaces(MEdge* edge) const {
+	std::vector<HEFace*> PolyMesh/*<isNormalized>*/::edgeAdjacentFaces(MEdge* edge) const {
 		std::vector<HEFace*> e_adjFaces;
 		if (edge == nullptr || edge->isIsolated()) return e_adjFaces;
 
@@ -670,7 +616,7 @@ namespace geometry
 
 	/* Get edge associated half-edge by id */
 	//template<bool isNormalized>
-	inline HEdge* PolyMesh/*<isNormalized>*/::edgeHalfEdge(MEdge* mEdge, short id) const {
+	HEdge* PolyMesh/*<isNormalized>*/::edgeHalfEdge(MEdge* mEdge, short id) const {
 		switch (id) {
 		case 0:
 			return mEdge->halfEdge();
@@ -683,7 +629,7 @@ namespace geometry
 
 	/* Get edge by its two ending vertices */
 	//template<bool isNormalized>
-	inline MEdge* PolyMesh/*<isNormalized>*/::edgeBetween(HEVert* v1, HEVert* v2) const {
+	MEdge* PolyMesh/*<isNormalized>*/::edgeBetween(HEVert* v1, HEVert* v2) const {
 		// if (v1 == nullptr || v2 == nullptr) return nullptr;
 		// if (v1->halfEdge() == nullptr) return nullptr;
 		// HEdge *he_begin = v1->halfEdge();
@@ -700,7 +646,7 @@ namespace geometry
 
 	/* Get half-edge by its two ending vertices(direction is important) */
 	//template<bool isNormalized>
-	inline HEdge* PolyMesh/*<isNormalized>*/::halfEdgeBetween(HEVert* v1, HEVert* v2) const {
+	HEdge* PolyMesh/*<isNormalized>*/::halfEdgeBetween(HEVert* v1, HEVert* v2) const {
 		if (v1 == nullptr || v2 == nullptr) return nullptr;
 		if (v1->halfEdge() == nullptr && v2->halfEdge() == nullptr) return nullptr;
 
@@ -730,7 +676,7 @@ namespace geometry
 
 	/* Get half-edge from which a vertex in face */
 	//template<bool isNormalized>
-	inline HEdge* PolyMesh/*<isNormalized>*/::faceHalfEdgeFromVert(HEFace* face, HEVert* v) const {
+	HEdge* PolyMesh/*<isNormalized>*/::faceHalfEdgeFromVert(HEFace* face, HEVert* v) const {
 		const auto hEdgesOfFace = faceHEdges(face);
 		for (const auto& hEdge : hEdgesOfFace) {
 			if (hEdge->froVertex() == v) return hEdge;
@@ -740,20 +686,20 @@ namespace geometry
 
 	/* Check whether two vertices are connected */
 	//template<bool isNormalized>
-	inline bool PolyMesh/*<isNormalized>*/::isConnected(HEVert* v1, HEVert* v2) const {
+	bool PolyMesh/*<isNormalized>*/::isConnected(HEVert* v1, HEVert* v2) const {
 		return (halfEdgeBetween(v1, v2) != nullptr);
 	}
 
 	/* Check whether two vertices are connected */
 	//template<bool isNormalized>
-	inline bool PolyMesh/*<isNormalized>*/::isFaceContainsVertex(HEFace* face, HEVert* v) const {
+	bool PolyMesh/*<isNormalized>*/::isFaceContainsVertex(HEFace* face, HEVert* v) const {
 		return std::find(face->aroundVerts().begin(), face->aroundVerts().end(), v) !=
 			std::end(face->aroundVerts());
 	}
 
 	/* Basic topology check */
 	//template<bool isNormalized>
-	inline bool PolyMesh/*<isNormalized>*/::isTriMesh() const {
+	bool PolyMesh/*<isNormalized>*/::isTriMesh() const {
 		return std::all_of(faceVec.cbegin(), faceVec.cend(), [](HEFace* face) {
 			return face->numVerts == 3;
 			}
@@ -762,7 +708,7 @@ namespace geometry
 
 	/* Low level apis */
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::printInfo() const {
+	void PolyMesh/*<isNormalized>*/::printInfo() const {
 		LOG::qpInfo("Model: ", modelName);
 		LOG::qpInfo("-- The number of vertices = ", numVertices());
 		LOG::qpInfo("-- The number of faces = ", numFaces());
@@ -773,7 +719,7 @@ namespace geometry
 	/* I/O */
 	/* Input */
 	//template<bool isNormalized>
-	inline void PolyMesh/*<isNormalized>*/::readMesh(const std::string& in_file) {
+	void PolyMesh/*<isNormalized>*/::readMesh(const std::string& in_file) {
 		// TODO: replace with a reader for any polygonal mesh
 		igl::read_triangle_mesh(in_file, vertMat, faceMat);
 
@@ -783,7 +729,7 @@ namespace geometry
 		numMeshFaces = faceMat.rows();
 	}
 
-	inline void PolyMesh::writeToOBJ(const std::string& out_file)
+	void PolyMesh::writeToOBJ(const std::string& out_file)
 	{
 		str_util::checkDir(out_file);
 
