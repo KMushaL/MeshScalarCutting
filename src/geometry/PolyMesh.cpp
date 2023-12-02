@@ -470,6 +470,15 @@ namespace geometry
 		if (!out_file.empty()) writeToOBJ(out_file);
 	}
 
+	void PolyMesh::zoomModel()
+	{
+		auto transMat = calcTransformMatrix();
+#pragma omp parallel for
+		for (int i = 0; i < vertMat.rows(); ++i) {
+			vertMat.row(i) = vertMat.row(i) * transMat.block(0, 0, 3, 3);
+		}
+	}
+
 	//template<bool isNormalized>
 	//template<typename>
 	void PolyMesh/*<isNormalized>*/::meshInverseNorm()
