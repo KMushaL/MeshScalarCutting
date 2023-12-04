@@ -3,28 +3,42 @@
 #include "utils/String.hpp"
 #include "core/MSCuttingModel.hpp"
 
+using namespace std;
 using namespace mscut;
 
 using ScalarFunc = core::MSCuttingModel::ScalarFunc;
 
+const std::string funcName = "yuanzhui";
 // level-set定义: 函数式和梯度
-Scalar val(const Eigen::Vector3d& p)
+static Scalar val(const Eigen::Vector3d& p)
 {
 	//return p.x() * p.x() + p.y() * p.y() - 1;
 	//return p.y() * p.y() - p.x() * p.x() + p.x() * p.x() * p.x();
 	//return p.x() - p.y();
 	//return (p.x() + 1) * (p.x() + 1) + (p.y()) * (p.y()) + (p.z()) * (p.z()) - 2.25;
 	//return (p.x()) * (p.x()) + (p.y()) * (p.y()) + (p.z()) * (p.z()) - 1;
-	return (2.0 / 3) * std::pow(p.x() * p.x(), 1.0 / 3) + (2.0 / 3) * std::pow(p.y() * p.y(), 1.0 / 3) - 1;
+	/*double x = p.x() - 1;
+	return (2.0 / 3) * std::pow(x * x, 1.0 / 3) + (2.0 / 3) * std::pow(p.y() * p.y(), 1.0 / 3) - 1;*/
+
+	double x = p.x();
+	double y = p.y();
+	double z = p.z();
+	return std::pow(x * x + z * z, 0.5) - std::pow(y * y, 0.5);
 }
-Eigen::Vector3d grad(const Eigen::Vector3d& p)
+static Eigen::Vector3d grad(const Eigen::Vector3d& p)
 {
 	//return  2 * Eigen::Vector3d(p.x(), p.y(), 0);
 	//return Eigen::Vector3d(3 * p.x() * p.x() - 2 * p.x(), 2 * p.y(), 0);
 	//return Eigen::Vector3d(1, -1, 0);
 	//return 2 * Eigen::Vector3d((p.x() + 1), p.y(), p.z());
 	//return 2 * Eigen::Vector3d(p.x(), p.y(), p.z());
-	return (4.0 / 9) * Eigen::Vector3d(std::pow(std::fabs(p.x()), -1.0 / 3) * (p.x() < 0 ? -1 : 1), std::pow(std::fabs(p.y()), -1.0 / 3) * (p.y() < 0 ? -1 : 1), 0);
+	/*double x = p.x() - 1;
+	return (4.0 / 9) * Eigen::Vector3d(std::pow(std::fabs(x), -1.0 / 3) * (x < 0 ? -1 : 1), std::pow(std::fabs(p.y()), -1.0 / 3) * (p.y() < 0 ? -1 : 1), 0);*/
+
+	double x = p.x();
+	double y = p.y();
+	double z = p.z();
+	return Eigen::Vector3d(x / sqrt(x * x + z * z), -y / sqrt(y * y), z / sqrt(x * x + z * z));
 }
 
 int main(int argc, char** argv)
@@ -33,7 +47,7 @@ int main(int argc, char** argv)
 	CLI::App app("Mesh Scalar Cutting");
 	//app.add_flag("-h,--help", "Print configuration and exit.");
 
-	std::string modelArg = R"(test2d_star.obj)";
+	std::string modelArg = R"(test2d2_star.obj)";
 	app.add_option("-f,--file", modelArg,
 		"Input model's name with extension.")/*->required()*/;
 
@@ -41,7 +55,7 @@ int main(int argc, char** argv)
 	app.add_option("-n", numSamplePoints,
 		"Specify the number of sample points at each edge of input model.");
 
-	int iter = 2;
+	int iter = 20;
 	app.add_option("-k,--iter", iter);
 
 	try {
@@ -60,6 +74,7 @@ int main(int argc, char** argv)
 
 	// 传入不可导点
 	std::vector<Vector3> singulars;
+	singulars.emplace_back(Vector3(0, 0, 0));
 
 	std::string meshNormVisDir;
 
@@ -76,14 +91,22 @@ int main(int argc, char** argv)
 	core::MSCuttingModel mscModel(mesh_file, numSamplePoints, scalarFunc, singulars);
 #endif
 
+	const std::string mae_vis_file = str_util::concatFilePath(
+		meshNormVisDir, std::to_string(numSamplePoints), funcName, "circle", "mae.txt"
+	);
+	str_util::checkDir(mae_vis_file);
+	std::ofstream mae_out(mae_vis_file);
+	mae_out << funcName << "\n";
 
 	for (int i = 0; i <= iter; ++i)
 	{
 		const std::string pd_vis_file = str_util::concatFilePath(
-			meshNormVisDir, std::to_string(numSamplePoints), "circle", "isoline_" + std::to_string(i) + ".obj"
+			meshNormVisDir, std::to_string(numSamplePoints), funcName, "circle", "isoline_" + std::to_string(i) + ".obj"
 		);
-		mscModel.launch(i, pd_vis_file);
+
+		double mae = mscModel.launch(i, mae_out, pd_vis_file);
 	}
+	mae_out.close();
 
 	/*const std::string inside_vis_file = str_util::concatFilePath(
 		VIS_DIR, mscModel.modelName, std::to_string(numSamplePoints), "insideMesh.obj"

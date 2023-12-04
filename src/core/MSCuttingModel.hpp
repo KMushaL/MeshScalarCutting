@@ -101,7 +101,7 @@ namespace core
 		/* Constane Variables */
 		constexpr static int WEIGHT_MAX_ITER = 20;			// 计算权重时的最大迭代次数
 
-		constexpr static double SINGULAR_DIS_EPSILON = 0.5; // 与不可导点的距离值
+		constexpr static double SINGULAR_DIS_EPSILON = 0.0; // 与不可导点的距离值
 
 		constexpr static double NUMERICAL_EPSILON = 1e-9;   // 控制后处理中的停止迭代误差(包括梯度接近于0、值接近于c等)
 
@@ -217,8 +217,10 @@ namespace core
 		/* 对mesh的所有边进行采样 */
 		int samplePointPerEdge();
 
-		/* 计算所有面的power diagram，并输出 */
-		void computeIsoline(std::ofstream& out);
+		/* 计算所有面的power diagram，并输出至out，以及返回mae */
+		double computeIsoline(std::ofstream& out);
+
+		double computeMAE();
 
 	private:
 		/* Visualization */
@@ -233,6 +235,7 @@ namespace core
 			后面三个参数分别传递的等值线的保存位置以及切割后内外mesh的保存位置
 		*/
 		bool launch(int iter,
+			std::ofstream& mae_out,
 			const std::string& isolineVisFile,
 			const std::string& insideMeshVisFile = "",
 			const std::string& outsideMeshVisFile = "");

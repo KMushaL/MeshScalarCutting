@@ -443,13 +443,22 @@ namespace geometry
 		scale *= scaleFactor;
 		Vector3 center = 0.5 * boxMax + 0.5 * boxMin;
 
-		for (int i = 0; i < 3; i++)
-			center[i] -= scale / 2;
 		Matrix<Scalar, 4, 4> zoomMatrix = Matrix<Scalar, 4, 4>::Identity();
 		Matrix<Scalar, 4, 4> transMatrix = Matrix<Scalar, 4, 4>::Identity();
+
+		//// transform至[0,1]
+		//for (int i = 0; i < 3; i++)
+		//	center[i] -= scale / 2;
+		//for (int i = 0; i < 3; i++)
+		//{
+		//	zoomMatrix(i, i) = 1. / scale;
+		//	transMatrix(3, i) = -center[i];
+		//}
+
+		// transform至[-1,1]
 		for (int i = 0; i < 3; i++)
 		{
-			zoomMatrix(i, i) = 1. / scale;
+			zoomMatrix(i, i) = 2. / scale;
 			transMatrix(3, i) = -center[i];
 		}
 		return zoomMatrix * transMatrix;

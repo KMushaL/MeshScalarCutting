@@ -50,6 +50,7 @@ namespace core
 			{
 				// 计算采样点位置
 				Point3 curSamplePointPos = vert_1 + (k + 1) * edgeDir / numSplits; // 先乘后除，或许可以减小点误差
+				//if (std::fabs(curSamplePointPos.x() - 1) < 1e-6 || std::fabs(curSamplePointPos.y()) < 1e-6) continue;
 				int s = 0;
 				for (s; s < singulars.size(); ++s)
 					if ((curSamplePointPos - singulars[s]).norm() <= SINGULAR_DIS_EPSILON) break;
@@ -454,7 +455,7 @@ namespace core
 			(triVerts[0]->pos - triVerts[2]->pos).normalized()
 		};
 
-		//#pragma omp parallel for
+#pragma omp parallel for
 		for (int i = 0; i < numPDPoints; ++i) {
 			const PowerDiagramPoint_3 originalPDPoint = facetPDPoints[faceIdx][i];
 
@@ -773,7 +774,7 @@ namespace core
 	* @brief: 对采样点计算Isoline
 	* @param out: 输出流，保存Isoline结果
 	*/
-	void MSCuttingModel::computeIsoline(std::ofstream& out)
+	double MSCuttingModel::computeIsoline(std::ofstream& out)
 	{
 		int globalOutVertIdx = 1; // .obj的顶点下标从1开始
 		std::map<PowerDiagramPoint_3, int> pdPointToOutIdx;
@@ -794,6 +795,8 @@ namespace core
 		}
 
 		/* Step2. 对筛选后的粗糙等值线结果进行后处理 */
+		double mae = .0;
+		int numPDPoints = .0;
 		for (int i = 0; i < numMeshFaces; ++i)
 		{
 			std::array<std::vector<PowerDiagramPoint_3>, 3> isoEdgePoints; // 保存在边上的(后处理过的)点
@@ -809,17 +812,21 @@ namespace core
 			// 输出Power Diagram中的所有全局坐标点
 			if (POST_PROCESSING_MAX_ITER <= 0)
 			{
-				for (const auto& adPoint : facetPDPoints[i])
+				for (const auto& pdPoint : facetPDPoints[i])
 				{
-					out << "v " << adPoint.transpose() << std::endl;
+					out << "v " << pdPoint.transpose() << std::endl;
+					mae += std::fabs(scalarFunc.val(pdPoint));
 				}
+				numPDPoints += facetPDPoints[i].size();
 			}
 			else
 			{
-				for (const auto& adPoint : projCurFacetPDPoints)
+				for (const auto& pdPoint : projCurFacetPDPoints)
 				{
-					out << "v " << adPoint.transpose() << std::endl;
+					out << "v " << pdPoint.transpose() << std::endl;
+					mae += std::fabs(scalarFunc.val(pdPoint));
 				}
+				numPDPoints += projCurFacetPDPoints.size();
 			}
 
 			// 输出Power Diagram中的所有边
@@ -828,6 +835,7 @@ namespace core
 				out << "l " << vertIdxPair.first << " " << vertIdxPair.second << std::endl;
 			}
 		}
+		mae /= numPDPoints;
 
 		/* Step3. 将相邻两个面的等值线连接起来 */
 		// 将边上的点统一按逆时针排序
@@ -880,6 +888,7 @@ namespace core
 						out << "l " << groupEdgePoint[i].second.second << " " << groupEdgePoint[i + 1].first.second << std::endl;
 				}*/
 		}
+		return mae;
 	}
 
 	///////////////////////
@@ -944,6 +953,7 @@ namespace core
 	* @return: 算法运行成功/错误
 	*/
 	bool MSCuttingModel::launch(int iter,
+		std::ofstream& mae_out,
 		const std::string& isolineVisFile,
 		const std::string& insideMeshVisFile,
 		const std::string& outsideMeshVisFile)
@@ -954,7 +964,7 @@ namespace core
 		if (!pd_vis_out) { LOG::qpError("I/O: File ", isolineVisFile.c_str(), " could not be opened!"); return false; }
 
 		/* 设置采样点输出路径 */
-		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), (std::string)"sample_points.obj");
+		const std::string sample_vis_file = str_util::concatFilePath(VIS_DIR, modelName, std::to_string(numSamplesPerEdge), "sample_points.obj");
 		str_util::checkDir(sample_vis_file);
 		std::ofstream sample_vis_out(sample_vis_file);
 		if (!sample_vis_out) { LOG::qpError("I/O: File ", sample_vis_file.c_str(), " could not be opened!"); return false; }
@@ -967,7 +977,8 @@ namespace core
 		sample_vis_out.close();
 
 		/* 计算等值线 */
-		computeIsoline(pd_vis_out);
+		double mae = computeIsoline(pd_vis_out);
+		mae_out << "iter: " << iter << " " << mae << "\n";
 		/* 输出采样点 */
 		LOG::qpInfo("Output Isoline to ", std::quoted(isolineVisFile), " ...");
 		pd_vis_out.close();
